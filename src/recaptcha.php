@@ -33,7 +33,7 @@ class Recaptcha {
         ]);
         $result = curl_exec($ch);
         $error  = curl_error($ch);
-        curl_close($ch);
+        unset($ch);
 
         if ($result === false) {
             error_log("reCAPTCHA verify error: " . $error);

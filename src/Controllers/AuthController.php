@@ -41,13 +41,12 @@ class AuthController {
         $nik = trim($_POST['nik'] ?? '');
         $password = $_POST['password'] ?? '';
         $confirmPassword = $_POST['confirm_password'] ?? '';
-        
+
+        $errors = [];
         $recaptchaResponse = $_POST['g-recaptcha-response'] ?? '';
         if (!Recaptcha::verify($recaptchaResponse, $_SERVER['REMOTE_ADDR'] ?? null)) {
             $errors[] = "Verifikasi reCAPTCHA gagal. Silakan centang \"I'm not a robot\".";
         }
-
-        $errors = [];
 
         if (empty($nama)) $errors[] = "Nama lengkap wajib diisi.";
         if (!Validator::validateEmail($email)) $errors[] = "Format email tidak valid.";
@@ -60,10 +59,6 @@ class AuthController {
         // Validasi Konfirmasi Password
         if ($password !== $confirmPassword) {
             $errors[] = "Konfirmasi password tidak cocok dengan password yang dimasukkan.";
-        }
-
-        if (empty($_SESSION['captcha_answer']) || (int)$captcha !== (int)$_SESSION['captcha_answer']) {
-            $errors[] = "Jawaban CAPTCHA salah.";
         }
 
         if (!empty($errors)) {

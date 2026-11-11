@@ -5,12 +5,14 @@ use App\Models\User;
 
 class Auth {
     private User $userModel;
-    private string $appKey;
+    private string $nikPepper;  // AES-256-GCM (enkripsi NIK)
+    private string $appKey;     // HMAC-SHA256 (nik_hash)
 
     public function __construct() {
         $this->userModel = new User();
         $config = require __DIR__ . '/../config/config.php';
         $this->appKey = $config['app']['key'];
+        $this->nikPepper = $config['app']['nik_pepper'];
     }
 
     public function encryptNIK(string $nik): string {
@@ -23,7 +25,7 @@ class Auth {
     }
 
     public function hashNIK(string $nik): string {
-        return hash_hmac('sha256', $nik, $this->appKey, true); // 32 raw bytes
+        return hash_hmac('sha256', $nik, $this->nikPepper, true);
     }
 
     public function registerWarga(string $nama, string $email, string $nik, string $password): array {

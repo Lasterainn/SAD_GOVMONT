@@ -42,13 +42,6 @@ $csrfToken = $csrfToken ?? Csrf::generateToken();
             <input type="password" id="password" name="password" required>
         </div>
 
-        <div class="form-group-checkbox">
-            <label class="checkbox-label">
-                <input type="checkbox" class="toggle-password" data-target="password,confirm_password">
-                <span>Tampilkan Password</span>
-            </label>
-        </div>
-
         <div class="form-group">
             <label for="confirm_password">Konfirmasi Password</label>
             <input type="password" id="confirm_password" name="confirm_password" required placeholder="Ulangi password Anda">

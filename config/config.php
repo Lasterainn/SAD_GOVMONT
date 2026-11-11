@@ -1,20 +1,24 @@
 <?php
+use App\Env;
+
 return [
     'db' => [
-        'host' => $_ENV['DB_HOST'] ?? '127.0.0.1',
-        'port' => $_ENV['DB_PORT'] ?? '5432',
-        'dbname' => $_ENV['DB_NAME'] ?? 'jakarta_connect',
-        'schema' => $_ENV['DB_SCHEMA'] ?? 'jakarta_connect',
-        'user' => $_ENV['DB_USER'] ?? 'postgres',
-        'pass' => $_ENV['DB_PASS'] ?? 'admin', //password postgre
+        'host'   => Env::get('DB_HOST'),
+        'port'   => Env::get('DB_PORT'),
+        'dbname' => Env::get('DB_NAME'),
+        'schema' => Env::get('DB_SCHEMA'),
+        'user'   => Env::get('DB_USER'),
+        'pass'   => Env::get('DB_PASS'),
     ],
     'app' => [
-        'key' => $_ENV['APP_KEY'] ?? '32byteslongsecretkeyforaes256gcm!!',
-        'session_lifetime' => 1800, // 30 menit
+        'key'              => Env::key('APP_KEY'),     // 32 byte biner
+        'nik_pepper'       => Env::key('NIK_PEPPER'),
+        'otp_pepper'       => Env::key('OTP_PEPPER'),
+        'session_lifetime' => (int)(getenv('SESSION_LIFETIME') ?: 1800),
         'max_login_attempts' => 3,
     ],
     'recaptcha' => [
-        'site_key'   => $_ENV['RECAPTCHA_SITE_KEY']   ?? '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI',
-        'secret_key' => $_ENV['RECAPTCHA_SECRET_KEY'] ?? '6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe',
-    ]
+        'site_key'   => Env::get('RECAPTCHA_SITE_KEY'),
+        'secret_key' => Env::get('RECAPTCHA_SECRET_KEY'),
+    ],
 ];
