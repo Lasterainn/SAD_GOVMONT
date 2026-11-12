@@ -4,15 +4,23 @@ namespace App;
 use App\Models\User;
 
 class Auth {
+    private const MFA_ROLES            = ['admin', 'pemerintah'];
+    private const OTP_TTL_DETIK        = 300;  // OTP berlaku 5 menit
+    private const OTP_RESEND_COOLDOWN  = 60;   // jeda minimal kirim ulang (detik)
+    private const OTP_MAX_RESEND       = 3;    // maks kirim ulang per sesi MFA
+    private const MFA_SESSION_TTL      = 600;  // batas total tahap OTP sejak password benar (10 menit)
+
     private User $userModel;
-    private string $nikPepper;  // AES-256-GCM (enkripsi NIK)
-    private string $appKey;     // HMAC-SHA256 (nik_hash)
+    private string $nikPepper;  // HMAC-SHA256 (nik_hash)
+    private string $appKey;     // AES-256-GCM (enkripsi NIK)
+    private string $otpPepper;  // HMAC-SHA256 (otp_hash)
 
     public function __construct() {
         $this->userModel = new User();
         $config = require __DIR__ . '/../config/config.php';
-        $this->appKey = $config['app']['key'];
+        $this->appKey    = $config['app']['key'];
         $this->nikPepper = $config['app']['nik_pepper'];
+        $this->otpPepper = $config['app']['otp_pepper'];
     }
 
     public function encryptNIK(string $nik): string {
@@ -54,6 +62,9 @@ class Auth {
         return ['success' => false, 'message' => 'Gagal mendaftar. Terjadi kesalahan sistem.'];
     }
 
+    // =================================================================
+    // LOGIN TAHAP 1: email + password (+ reCAPTCHA di controller)
+    // =================================================================
     public function login(string $email, string $password): array {
         $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
         $ua = $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown';
@@ -84,39 +95,230 @@ class Auth {
             return ['success' => false, 'message' => 'Email atau password salah.'];
         }
 
-        // Cek Status Akun & Penguncian 3x Gagal
-        if ($user['status'] === 'terkunci' || ($user['terkunci_sampai'] && strtotime($user['terkunci_sampai']) > time())) {
+        // Cek penguncian. Hanya terkunci_sampai yang menentukan (status 'terkunci' dibiarkan
+        // sampai login sukses berikutnya me-reset-nya), akun 'nonaktif' selalu ditolak.
+        $lockedUntil = $user['terkunci_sampai'] ? strtotime($user['terkunci_sampai']) : null;
+        $lockMasihAktif = $lockedUntil !== null && $lockedUntil > time();
+
+        if ($user['status'] === 'nonaktif' || $lockMasihAktif) {
             $this->userModel->logLoginAttempt($user['id'], $role, $email, 'password', false, 'Akun terkunci', $ip, $ua);
             return ['success' => false, 'message' => 'Akun Anda terkunci sementara karena 3 kali gagal login. Coba lagi dalam 15 menit.'];
         }
 
+        // Jika masa kunci sudah lewat, hitung percobaan dari 0 lagi
+        $attempts = ($lockedUntil !== null) ? 0 : (int)$user['jumlah_gagal_login'];
+
         // Verifikasi Password Argon2id
         if (!password_verify($password, $user['password_hash'])) {
-            $this->userModel->incrementFailedLogin($table, $user['id'], (int)$user['jumlah_gagal_login']);
+            $this->userModel->incrementFailedLogin($table, $user['id'], $attempts);
             $this->userModel->logLoginAttempt($user['id'], $role, $email, 'password', false, 'Password salah', $ip, $ua);
 
-            $remaining = 2 - (int)$user['jumlah_gagal_login'];
+            $remaining = 2 - $attempts;
             if ($remaining > 0) {
                 return ['success' => false, 'message' => "Email atau password salah. Sisa percobaan: {$remaining}"];
-            } else {
-                return ['success' => false, 'message' => 'Akun terkunci selama 15 menit karena gagal 3 kali.'];
+            }
+            return ['success' => false, 'message' => 'Akun terkunci selama 15 menit karena gagal 3 kali.'];
+        }
+
+        // ---- Password benar ----
+        $this->userModel->logLoginAttempt($user['id'], $role, $email, 'password', true, null, $ip, $ua);
+
+        // Admin & Pemerintah: belum login penuh -> lanjut tahap OTP
+        if (in_array($role, self::MFA_ROLES, true)) {
+            return $this->startMfa($user, $role, $table, $ip, $ua);
+        }
+
+        // Warga: login penuh
+        $this->userModel->resetFailedLogin($table, $user['id']);
+        $this->completeLogin($user, $role);
+
+        return ['success' => true, 'message' => 'Login berhasil.', 'role' => $role];
+    }
+
+    /** Buat sesi baru dan tandai user sebagai sudah login penuh. */
+    private function completeLogin(array $user, string $role): void {
+        session_regenerate_id(true);
+        unset($_SESSION['csrf_token'], $_SESSION['mfa_pending'], $_SESSION['mfa_resend']);
+
+        $_SESSION['user_id']    = $user['id'];
+        $_SESSION['user_name']  = $user['nama_lengkap'];
+        $_SESSION['user_email'] = $user['email'];
+        $_SESSION['user_role']  = $role;
+        $_SESSION['logged_in']  = true;
+    }
+
+    // =================================================================
+    // LOGIN TAHAP 2: MFA / OTP via email (admin & pemerintah)
+    // =================================================================
+
+    private function generateOtp(): string {
+        return str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+    }
+
+    /** Hash OTP = HMAC-SHA256(user_id|otp, OTP_PEPPER). OTP asli tidak pernah disimpan. */
+    private function hashOtp(string $userId, string $otp): string {
+        return hash_hmac('sha256', $userId . '|' . $otp, $this->otpPepper);
+    }
+
+    public function maskEmail(string $email): string {
+        [$local, $domain] = array_pad(explode('@', $email, 2), 2, '');
+        $visible = substr($local, 0, 2);
+        return $visible . str_repeat('*', max(1, strlen($local) - 2)) . '@' . $domain;
+    }
+
+    /** Buat + kirim OTP baru. Return true jika email terkirim. */
+    private function issueOtp(string $table, string $userId, string $email, string $name): bool {
+        $otp = $this->generateOtp();
+        $this->userModel->saveOtp($table, $userId, $this->hashOtp($userId, $otp), self::OTP_TTL_DETIK);
+
+        if (!Mailer::sendOtp($email, $name, $otp, intdiv(self::OTP_TTL_DETIK, 60))) {
+            $this->userModel->clearOtp($table, $userId);
+            return false;
+        }
+        return true;
+    }
+
+    private function startMfa(array $user, string $role, string $table, string $ip, string $ua): array {
+        if (!$this->issueOtp($table, $user['id'], $user['email'], $user['nama_lengkap'])) {
+            $this->userModel->logLoginAttempt($user['id'], $role, $user['email'], 'otp', false, 'gagal_kirim_email', $ip, $ua);
+            return ['success' => false, 'message' => 'Gagal mengirim kode OTP. Silakan coba lagi beberapa saat.'];
+        }
+
+        // Sesi baru, TANPA logged_in. User baru dianggap login setelah OTP benar.
+        session_regenerate_id(true);
+        unset($_SESSION['logged_in']);
+        $_SESSION['mfa_pending'] = [
+            'user_id'    => $user['id'],
+            'role'       => $role,
+            'table'      => $table,
+            'name'       => $user['nama_lengkap'],
+            'email'      => $user['email'],
+            'started_at' => time(),
+        ];
+        $_SESSION['mfa_resend'] = 0;
+
+        return ['success' => true, 'mfa_required' => true, 'role' => $role];
+    }
+
+    /** Batalkan proses MFA (OTP di DB dihapus, sesi pending dibuang). */
+    public function cancelMfa(): void {
+        $p = $_SESSION['mfa_pending'] ?? null;
+        if ($p) {
+            $this->userModel->clearOtp($p['table'], $p['user_id']);
+        }
+        unset($_SESSION['mfa_pending'], $_SESSION['mfa_resend']);
+    }
+
+    public function verifyMfa(string $otpInput): array {
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+        $ua = $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown';
+
+        $p = $_SESSION['mfa_pending'] ?? null;
+        if (!$p) {
+            return ['success' => false, 'restart' => true, 'message' => 'Sesi verifikasi tidak ditemukan. Silakan login ulang.'];
+        }
+
+        if (time() - (int)$p['started_at'] > self::MFA_SESSION_TTL) {
+            $this->cancelMfa();
+            return ['success' => false, 'restart' => true, 'message' => 'Sesi verifikasi habis. Silakan login ulang.'];
+        }
+
+        $state = $this->userModel->findMfaState($p['table'], $p['user_id']);
+        if (!$state || $state['status'] === 'nonaktif' || $state['sedang_terkunci']) {
+            $this->cancelMfa();
+            return ['success' => false, 'restart' => true, 'message' => 'Akun tidak dapat diverifikasi saat ini.'];
+        }
+
+        $otpInput = preg_replace('/\s+/', '', $otpInput);
+        if (!preg_match('/^[0-9]{6}$/', $otpInput)) {
+            return ['success' => false, 'message' => 'Kode OTP harus 6 digit angka.']; // tidak memakai jatah percobaan
+        }
+
+        if (!$state['otp_aktif']) {
+            $this->userModel->logLoginAttempt($p['user_id'], $p['role'], $p['email'], 'otp', false, 'otp_kedaluwarsa', $ip, $ua);
+            return ['success' => false, 'message' => 'Kode OTP sudah kedaluwarsa. Klik "Kirim ulang kode".'];
+        }
+
+        // Pakai jatah percobaan SEBELUM membandingkan (atomik di DB)
+        $attempt = $this->userModel->consumeOtpAttempt($p['table'], $p['user_id']);
+        if ($attempt === null) {
+            return $this->failTooManyOtp($p, $ip, $ua);
+        }
+
+        $expected = $this->hashOtp($p['user_id'], $otpInput);
+        if (!hash_equals((string)$state['otp_hash'], $expected)) {
+            $this->userModel->logLoginAttempt($p['user_id'], $p['role'], $p['email'], 'otp', false, 'otp_salah', $ip, $ua);
+
+            if ($attempt >= 3) {
+                return $this->failTooManyOtp($p, $ip, $ua);
+            }
+            $sisa = 3 - $attempt;
+            return ['success' => false, 'message' => "Kode OTP salah. Sisa percobaan: {$sisa}"];
+        }
+
+        // ---- OTP benar: sekali pakai ----
+        $this->userModel->clearOtp($p['table'], $p['user_id']);
+        $this->userModel->resetFailedLogin($p['table'], $p['user_id']);
+        $this->userModel->logLoginAttempt($p['user_id'], $p['role'], $p['email'], 'otp', true, null, $ip, $ua);
+
+        $this->completeLogin(
+            ['id' => $p['user_id'], 'nama_lengkap' => $p['name'], 'email' => $p['email']],
+            $p['role']
+        );
+
+        return ['success' => true, 'role' => $p['role']];
+    }
+
+    /** OTP salah 3x: hapus OTP, kunci akun 15 menit, paksa login ulang. */
+    private function failTooManyOtp(array $p, string $ip, string $ua): array {
+        $this->userModel->clearOtp($p['table'], $p['user_id']);
+        $this->userModel->lockAccount($p['table'], $p['user_id']);
+        $this->userModel->logLoginAttempt($p['user_id'], $p['role'], $p['email'], 'otp', false, 'otp_gagal_3x_akun_terkunci', $ip, $ua);
+        unset($_SESSION['mfa_pending'], $_SESSION['mfa_resend']);
+
+        return [
+            'success' => false,
+            'restart' => true,
+            'message' => 'OTP salah 3 kali. Akun terkunci selama 15 menit.',
+        ];
+    }
+
+    public function resendMfa(): array {
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+        $ua = $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown';
+
+        $p = $_SESSION['mfa_pending'] ?? null;
+        if (!$p || time() - (int)$p['started_at'] > self::MFA_SESSION_TTL) {
+            $this->cancelMfa();
+            return ['success' => false, 'restart' => true, 'message' => 'Sesi verifikasi habis. Silakan login ulang.'];
+        }
+
+        if ((int)($_SESSION['mfa_resend'] ?? 0) >= self::OTP_MAX_RESEND) {
+            return ['success' => false, 'message' => 'Batas kirim ulang tercapai. Silakan batalkan dan login ulang.'];
+        }
+
+        $state = $this->userModel->findMfaState($p['table'], $p['user_id']);
+        if (!$state || $state['status'] === 'nonaktif' || $state['sedang_terkunci']) {
+            $this->cancelMfa();
+            return ['success' => false, 'restart' => true, 'message' => 'Akun tidak dapat diverifikasi saat ini.'];
+        }
+
+        // Cooldown: umur OTP aktif = TTL - sisa waktu
+        if ($state['otp_aktif']) {
+            $umur = self::OTP_TTL_DETIK - (int)$state['otp_sisa_detik'];
+            if ($umur < self::OTP_RESEND_COOLDOWN) {
+                $tunggu = self::OTP_RESEND_COOLDOWN - $umur;
+                return ['success' => false, 'message' => "Tunggu {$tunggu} detik sebelum meminta kode baru."];
             }
         }
 
-        // Password Benar -> Logging & Reset percobaan
-        $this->userModel->resetFailedLogin($table, $user['id']);
-        $this->userModel->logLoginAttempt($user['id'], $role, $email, 'password', true, null, $ip, $ua);
+        if (!$this->issueOtp($p['table'], $p['user_id'], $p['email'], $p['name'])) {
+            $this->userModel->logLoginAttempt($p['user_id'], $p['role'], $p['email'], 'otp', false, 'gagal_kirim_email', $ip, $ua);
+            return ['success' => false, 'message' => 'Gagal mengirim kode OTP. Coba lagi beberapa saat.'];
+        }
 
-        // Regenerasi ID Sesi
-        session_regenerate_id(true);
-
-        $_SESSION['user_id'] = $user['id'];
-        $_SESSION['user_name'] = $user['nama_lengkap'];
-        $_SESSION['user_email'] = $user['email'];
-        $_SESSION['user_role'] = $role;
-        $_SESSION['logged_in'] = true;
-
-        return ['success' => true, 'message' => 'Login berhasil.', 'role' => $role];
+        $_SESSION['mfa_resend'] = (int)($_SESSION['mfa_resend'] ?? 0) + 1;
+        return ['success' => true, 'message' => 'Kode OTP baru telah dikirim ke email Anda.'];
     }
 
     public function logout(): void {

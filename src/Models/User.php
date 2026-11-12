@@ -5,10 +5,20 @@ use App\Database;
 use PDO;
 
 class User {
+    private const MFA_TABLES = ['tbl_pemerintah', 'tbl_admin'];
+
     private PDO $db;
 
     public function __construct() {
         $this->db = Database::getConnection();
+    }
+
+    /** Nama tabel masuk ke SQL lewat interpolasi -> wajib whitelist. */
+    private function mfaTable(string $table): string {
+        if (!in_array($table, self::MFA_TABLES, true)) {
+            throw new \InvalidArgumentException('Tabel MFA tidak valid.');
+        }
+        return $table;
     }
 
     public function findWargaByEmail(string $email): ?array {
@@ -99,5 +109,82 @@ class User {
             'ip_address' => $ipAddress,
             'user_agent' => substr($userAgent, 0, 500)
         ]);
+    }
+
+    // =================================================================
+    // MFA (OTP) - hanya tbl_admin & tbl_pemerintah
+    // Semua perhitungan waktu dilakukan di PostgreSQL (now()) agar tidak
+    // ada selisih zona waktu antara PHP dan DB.
+    // =================================================================
+
+    /** Simpan hash OTP baru, reset percobaan, set kedaluwarsa = now() + ttl detik. */
+    public function saveOtp(string $table, string $id, string $otpHash, int $ttlDetik): void {
+        $table = $this->mfaTable($table);
+        $stmt = $this->db->prepare("
+            UPDATE jakarta_connect.{$table}
+            SET otp_hash = :hash,
+                otp_kedaluwarsa_at = now() + (CAST(:ttl AS integer) * interval '1 second'),
+                otp_percobaan = 0
+            WHERE id = :id
+        ");
+        $stmt->execute(['hash' => $otpHash, 'ttl' => $ttlDetik, 'id' => $id]);
+    }
+
+    /** Hapus OTP (sekali pakai / dibatalkan / gagal terlalu banyak). */
+    public function clearOtp(string $table, string $id): void {
+        $table = $this->mfaTable($table);
+        $stmt = $this->db->prepare("
+            UPDATE jakarta_connect.{$table}
+            SET otp_hash = NULL, otp_kedaluwarsa_at = NULL, otp_percobaan = 0
+            WHERE id = :id
+        ");
+        $stmt->execute(['id' => $id]);
+    }
+
+    /** Status MFA terkini user (dihitung di sisi DB). */
+    public function findMfaState(string $table, string $id): ?array {
+        $table = $this->mfaTable($table);
+        $stmt = $this->db->prepare("
+            SELECT id, nama_lengkap, email, status, otp_hash, otp_percobaan,
+                   (otp_hash IS NOT NULL AND otp_kedaluwarsa_at > now())                    AS otp_aktif,
+                   COALESCE(EXTRACT(EPOCH FROM (otp_kedaluwarsa_at - now())), 0)::int       AS otp_sisa_detik,
+                   (terkunci_sampai IS NOT NULL AND terkunci_sampai > now())                AS sedang_terkunci
+            FROM jakarta_connect.{$table}
+            WHERE id = :id LIMIT 1
+        ");
+        $stmt->execute(['id' => $id]);
+        $row = $stmt->fetch();
+        return $row ?: null;
+    }
+
+    /**
+     * Pakai 1 jatah percobaan secara ATOMIK (sebelum membandingkan OTP),
+     * sehingga request paralel tidak bisa menembus batas 3 percobaan.
+     * Return jumlah percobaan terpakai (1..3), atau null jika jatah sudah habis / OTP tidak ada.
+     */
+    public function consumeOtpAttempt(string $table, string $id): ?int {
+        $table = $this->mfaTable($table);
+        $stmt = $this->db->prepare("
+            UPDATE jakarta_connect.{$table}
+            SET otp_percobaan = otp_percobaan + 1
+            WHERE id = :id AND otp_hash IS NOT NULL AND otp_percobaan < 3
+            RETURNING otp_percobaan
+        ");
+        $stmt->execute(['id' => $id]);
+        $row = $stmt->fetch();
+        return $row ? (int)$row['otp_percobaan'] : null;
+    }
+
+    /** Kunci akun 15 menit (dipakai saat OTP salah 3x). */
+    public function lockAccount(string $table, string $id): void {
+        $table = $this->mfaTable($table);
+        $stmt = $this->db->prepare("
+            UPDATE jakarta_connect.{$table}
+            SET status = 'terkunci'::jakarta_connect.status_akun,
+                jumlah_gagal_login = 3,
+                terkunci_sampai = now() + interval '15 minutes'
+            WHERE id = :id
+        ");
+        $stmt->execute(['id' => $id]);
     }
 }

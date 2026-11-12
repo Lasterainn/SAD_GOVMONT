@@ -43,6 +43,7 @@ class AuthController {
         $confirmPassword = $_POST['confirm_password'] ?? '';
 
         $errors = [];
+
         $recaptchaResponse = $_POST['g-recaptcha-response'] ?? '';
         if (!Recaptcha::verify($recaptchaResponse, $_SERVER['REMOTE_ADDR'] ?? null)) {
             $errors[] = "Verifikasi reCAPTCHA gagal. Silakan centang \"I'm not a robot\".";
@@ -100,14 +101,81 @@ class AuthController {
         $result = $this->auth->login($email, $password);
 
         if ($result['success']) {
+            // Admin & pemerintah -> tahap OTP, warga -> langsung dashboard
+            header('Location: ' . (!empty($result['mfa_required']) ? '/mfa' : '/dashboard'));
+            exit;
+        }
+        $this->showLogin($result['message']);
+    }
+
+    // ---------------------------------------------------------------
+    // MFA (OTP)
+    // ---------------------------------------------------------------
+    private function renderMfa(?string $error = null, ?string $success = null): void {
+        $pending = $_SESSION['mfa_pending'] ?? null;
+        if (!$pending) {
+            header('Location: /login');
+            exit;
+        }
+
+        $csrfToken   = Csrf::generateToken();
+        $maskedEmail = $this->auth->maskEmail($pending['email']);
+        $roleLabel   = $pending['role'] === 'admin' ? 'Admin' : 'Pemerintah';
+        $title       = "Verifikasi OTP - JakartaConnect";
+        $viewFile    = __DIR__ . '/../../templates/mfa.php';
+        require __DIR__ . '/../../templates/layout.php';
+    }
+
+    public function showMfa(): void {
+        $this->renderMfa();
+    }
+
+    public function verifyMfa(): void {
+        if (!Csrf::verifyToken($_POST['csrf_token'] ?? '')) {
+            $this->renderMfa('Token CSRF tidak valid.');
+            return;
+        }
+
+        $result = $this->auth->verifyMfa((string)($_POST['otp'] ?? ''));
+
+        if ($result['success']) {
             header('Location: /dashboard');
             exit;
-        } else {
-            $this->showLogin($result['message']);
         }
+        if (!empty($result['restart'])) {
+            $this->showLogin($result['message']);
+            return;
+        }
+        $this->renderMfa($result['message']);
+    }
+
+    public function resendMfa(): void {
+        if (!Csrf::verifyToken($_POST['csrf_token'] ?? '')) {
+            $this->renderMfa('Token CSRF tidak valid.');
+            return;
+        }
+
+        $result = $this->auth->resendMfa();
+
+        if (!empty($result['restart'])) {
+            $this->showLogin($result['message']);
+            return;
+        }
+        $result['success']
+            ? $this->renderMfa(null, $result['message'])
+            : $this->renderMfa($result['message']);
+    }
+
+    public function cancelMfa(): void {
+        if (Csrf::verifyToken($_POST['csrf_token'] ?? '')) {
+            $this->auth->cancelMfa();
+        }
+        header('Location: /login');
+        exit;
     }
 
     public function dashboard(): void {
+        // logged_in baru true setelah OTP benar (admin/pemerintah)
         if (empty($_SESSION['logged_in'])) {
             header('Location: /login');
             exit;
