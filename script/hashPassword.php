@@ -1,7 +1,6 @@
 <?php
-// Pemakaian (CLI):  php tools/hash_password.php
+// Run filenya saja
 // Menghasilkan hash argon2id (parameter sama dengan Auth::registerWarga) untuk INSERT manual di pgAdmin.
-// Password dibaca dari stdin agar tidak tersimpan di history shell.
 
 if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
 
