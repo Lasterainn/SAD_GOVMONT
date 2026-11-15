@@ -62,7 +62,7 @@
                 <div class="followed-main">
                   <div class="followed-top">
                     <div>
-                      <strong><?= e($fp['title']) ?></strong>
+                      <strong><a href="/proyek/<?= e($fp['id']) ?>"><?= e($fp['title']) ?></a></strong>
                       <span class="tiny muted"><?= e($fp['location']) ?></span>
                     </div>
                     <strong class="small"><?= (int)$fp['progress'] ?>%</strong>
@@ -141,7 +141,7 @@
                 <div class="followed-main">
                   <div class="followed-top">
                     <div>
-                      <strong><?= e($fp['title']) ?></strong>
+                      <strong><a href="/proyek/<?= e($fp['id']) ?>"><?= e($fp['title']) ?></a></strong>
                       <span class="tiny muted"><?= e($fp['agency']) ?> &middot; <?= e($fp['budget']) ?></span>
                     </div>
                     <span class="pill pill-blue pill-xs"><?= (int)$fp['progress'] ?>%</span>
@@ -204,7 +204,7 @@
         <div class="card panel-card">
           <div class="panel-head">
             <h3>Kelola Kerangka Proyek &amp; Status</h3>
-            <button type="button" class="btn-solid btn-sm" onclick="alert('Mode flat: Form tambah kerangka proyek admin.')">
+            <button type="button" class="btn-solid btn-sm" id="adminAddProjectBtn">
               <?= icon('plus', 15) ?> Tambah Proyek
             </button>
           </div>
@@ -223,7 +223,7 @@
                 <?php foreach ($adminProjects as $ap): ?>
                   <tr>
                     <td>
-                      <strong><?= e($ap['judul']) ?></strong>
+                      <strong><a href="/proyek/<?= e($ap['id']) ?>"><?= e($ap['judul']) ?></a></strong>
                       <span class="tiny muted">Diperbarui <?= e($ap['updated']) ?></span>
                     </td>
                     <td class="small muted"><?= e($ap['instansi']) ?></td>

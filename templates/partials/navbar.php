@@ -1,7 +1,8 @@
 <?php
-$isLoggedIn = !empty($_SESSION['logged_in']);
+$isLoggedIn  = !empty($_SESSION['logged_in']);
 $displayName = $_SESSION['user_name'] ?? 'Rani Prameswari';
-$shortName = explode(' ', trim($displayName))[0] . (isset(explode(' ', trim($displayName))[1]) ? ' ' . mb_substr(explode(' ', trim($displayName))[1], 0, 1) . '.' : '');
+$nameParts   = preg_split('/\s+/', trim($displayName)) ?: ['Warga'];
+$shortName   = $nameParts[0] . (isset($nameParts[1]) && $nameParts[1] !== '' ? ' ' . mb_substr($nameParts[1], 0, 1) . '.' : '');
 ?>
 <header class="topbar">
   <div class="container topbar-inner">
@@ -18,7 +19,11 @@ $shortName = explode(' ', trim($displayName))[0] . (isset(explode(' ', trim($dis
     </nav>
 
     <div class="topbar-actions">
-      <a href="/proyek" class="icon-btn" title="Cari proyek atau diskusi" aria-label="Cari"><?= icon('search', 18) ?></a>
+      <button type="button" class="global-search-trigger" id="openGlobalSearch" aria-label="Cari proyek atau diskusi">
+        <?= icon('search', 16) ?>
+        <span class="search-trigger-text">Cari...</span>
+        <kbd class="search-kbd">Ctrl K</kbd>
+      </button>
 
       <?php if ($isLoggedIn): ?>
         <a href="/dashboard" class="icon-btn notif-btn" title="Notifikasi" aria-label="Notifikasi">
@@ -39,3 +44,37 @@ $shortName = explode(' ', trim($displayName))[0] . (isset(explode(' ', trim($dis
     </div>
   </div>
 </header>
+
+<!-- Global Quick Search Modal -->
+<div class="modal-backdrop hidden" id="globalSearchModal" role="dialog" aria-modal="true" aria-label="Pencarian cepat JakartaConnect">
+  <div class="modal-card card global-search-card">
+    <div class="global-search-input-row">
+      <?= icon('search', 18) ?>
+      <input type="text" id="globalSearchInput" placeholder="Ketik nama proyek, lokasi, instansi, atau topik diskusi..." autocomplete="off">
+      <button type="button" class="icon-btn" id="closeGlobalSearch" aria-label="Tutup">&times;</button>
+    </div>
+    <div class="global-search-results" id="globalSearchResults">
+      <div class="gs-section-label">Proyek Pembangunan</div>
+      <?php foreach (\App\Data\MockData::projects() as $gp): ?>
+        <a href="/proyek/<?= e($gp['id']) ?>" class="gs-item" data-gs-text="<?= e(mb_strtolower($gp['title'] . ' ' . $gp['location'] . ' ' . $gp['agency'] . ' ' . $gp['category'])) ?>">
+          <div>
+            <strong><?= e($gp['title']) ?></strong>
+            <span class="tiny muted"><?= e($gp['location']) ?> &middot; <?= e($gp['agency']) ?></span>
+          </div>
+          <span class="pill pill-blue pill-xs"><?= (int)$gp['progress'] ?>%</span>
+        </a>
+      <?php endforeach; ?>
+
+      <div class="gs-section-label" style="margin-top: 12px;">Ruang Diskusi Warga</div>
+      <?php foreach (\App\Data\MockData::discussions() as $gd): ?>
+        <a href="/diskusi/<?= e($gd['id']) ?>" class="gs-item" data-gs-text="<?= e(mb_strtolower($gd['title'] . ' ' . $gd['excerpt'] . ' ' . $gd['author'] . ' ' . $gd['category'])) ?>">
+          <div>
+            <strong><?= e($gd['title']) ?></strong>
+            <span class="tiny muted">Oleh <?= e($gd['author']) ?> &middot; <?= (int)$gd['comments'] ?> tanggapan</span>
+          </div>
+          <span class="tag"><?= e($gd['category']) ?></span>
+        </a>
+      <?php endforeach; ?>
+    </div>
+  </div>
+</div>

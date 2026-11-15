@@ -29,7 +29,7 @@
     <div class="footer-col footer-newsletter">
       <h4>Dapatkan kabar terbaru</h4>
       <p>Ringkasan perkembangan Jakarta langsung ke email Anda.</p>
-      <form class="newsletter-form" onsubmit="event.preventDefault(); alert('Terima kasih! Email Anda terdaftar untuk kabar JakartaConnect.'); this.reset();">
+      <form class="newsletter-form" id="footerNewsletterForm">
         <input type="email" placeholder="Alamat email" aria-label="Alamat email" required>
         <button type="submit" aria-label="Berlangganan"><?= icon('send', 16) ?></button>
       </form>

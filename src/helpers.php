@@ -1,4 +1,6 @@
 <?php
+
+// Polyfill mbstring jika ekstensi php_mbstring belum aktif di XAMPP (php.ini)
 if (!function_exists('mb_substr')) {
     function mb_substr(string $string, int $start, ?int $length = null, ?string $encoding = null): string {
         return $length === null ? substr($string, $start) : substr($string, $start, $length);
@@ -19,6 +21,7 @@ if (!function_exists('mb_strlen')) {
         return strlen($string);
     }
 }
+
 if (!function_exists('e')) {
     function e(?string $value): string {
         return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');

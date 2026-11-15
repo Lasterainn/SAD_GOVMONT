@@ -3,9 +3,11 @@ namespace App;
 
 class Recaptcha {
     private const VERIFY_URL = 'https://www.google.com/recaptcha/api/siteverify';
+    private const TEST_SITE_KEY = '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI';
+    private const TEST_SECRET_KEY = '6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe';
 
     public static function siteKey(): string {
-        return getenv('RECAPTCHA_SITE_KEY') ?: '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI';
+        return getenv('RECAPTCHA_SITE_KEY') ?: self::TEST_SITE_KEY;
     }
 
     public static function verify(?string $response, ?string $remoteIp = null): bool {
@@ -14,9 +16,18 @@ class Recaptcha {
         }
 
         $secretKey = getenv('RECAPTCHA_SECRET_KEY') ?: '';
+        if ($secretKey === '' && self::siteKey() === self::TEST_SITE_KEY) {
+            $secretKey = self::TEST_SECRET_KEY;
+        }
+
         if ($secretKey === '') {
+            error_log('reCAPTCHA verify error: RECAPTCHA_SECRET_KEY kosong.');
             return false;
         }
+
+        $isLocal = (getenv('APP_ENV') ?: 'local') === 'local';
+        $hasCaFile = !empty(ini_get('curl.cainfo')) || !empty(ini_get('openssl.cafile'));
+        $verifySsl = !($isLocal && !$hasCaFile);
 
         $postData = http_build_query([
             'secret'   => $secretKey,
@@ -32,14 +43,15 @@ class Recaptcha {
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_CONNECTTIMEOUT => 5,
                 CURLOPT_TIMEOUT        => 10,
-                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_SSL_VERIFYPEER => $verifySsl,
+                CURLOPT_SSL_VERIFYHOST => $verifySsl ? 2 : 0,
             ]);
             $result = curl_exec($ch);
             $error  = curl_error($ch);
             unset($ch);
 
             if ($result === false) {
-                error_log("reCAPTCHA verify error (cURL): " . $error);
+                error_log('reCAPTCHA verify error (cURL): ' . $error);
                 return false;
             }
         } else {
@@ -51,15 +63,24 @@ class Recaptcha {
                     'content' => $postData,
                     'timeout' => 10,
                 ],
+                'ssl' => [
+                    'verify_peer'      => $verifySsl,
+                    'verify_peer_name' => $verifySsl,
+                ],
             ]);
             $result = @file_get_contents(self::VERIFY_URL, false, $context);
             if ($result === false) {
-                error_log("reCAPTCHA verify error (stream): gagal menghubungi Google reCAPTCHA.");
+                error_log('reCAPTCHA verify error (stream): gagal menghubungi Google siteverify.');
                 return false;
             }
         }
 
         $data = json_decode($result, true);
-        return is_array($data) && ($data['success'] ?? false) === true;
+        if (!is_array($data) || ($data['success'] ?? false) !== true) {
+            error_log('reCAPTCHA rejected: ' . ($result ?: 'empty response'));
+            return false;
+        }
+
+        return true;
     }
 }

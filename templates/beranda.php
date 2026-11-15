@@ -27,7 +27,7 @@
       <div class="hero-photo-card">
         <span class="hero-live-badge"><span class="live-dot"></span> 4 proyek aktif</span>
         <div class="hero-skyline-art" aria-hidden="true"></div>
-        <a href="/proyek" class="hero-featured-overlay">
+        <a href="/proyek/prj-01" class="hero-featured-overlay">
           <div>
             <span class="tiny muted"><?= icon('pin', 13) ?> Proyek unggulan</span>
             <strong>Revitalisasi Trotoar Rasuna Said</strong>
