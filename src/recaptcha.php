@@ -3,11 +3,9 @@ namespace App;
 
 class Recaptcha {
     private const VERIFY_URL = 'https://www.google.com/recaptcha/api/siteverify';
-    private const TEST_SITE_KEY = '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI';
-    private const TEST_SECRET_KEY = '6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe';
 
     public static function siteKey(): string {
-        return getenv('RECAPTCHA_SITE_KEY') ?: self::TEST_SITE_KEY;
+        return trim((string) (getenv('RECAPTCHA_SITE_KEY') ?: ''));
     }
 
     public static function verify(?string $response, ?string $remoteIp = null): bool {
@@ -15,13 +13,9 @@ class Recaptcha {
             return false;
         }
 
-        $secretKey = getenv('RECAPTCHA_SECRET_KEY') ?: '';
-        if ($secretKey === '' && self::siteKey() === self::TEST_SITE_KEY) {
-            $secretKey = self::TEST_SECRET_KEY;
-        }
-
+        $secretKey = trim((string) (getenv('RECAPTCHA_SECRET_KEY') ?: ''));
         if ($secretKey === '') {
-            error_log('reCAPTCHA verify error: RECAPTCHA_SECRET_KEY kosong.');
+            error_log('reCAPTCHA verify error: RECAPTCHA_SECRET_KEY belum dikonfigurasi.');
             return false;
         }
 
