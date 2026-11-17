@@ -19,6 +19,16 @@ $activeNav  = $activeNav ?? '';
 <?php else: ?>
     <?php include __DIR__ . '/partials/navbar.php'; ?>
     <main class="portal-main">
+        <?php if ($msgOk = flash('success')): ?>
+            <div class="container" style="padding-top:16px;">
+                <div class="alert alert-success"><?= e($msgOk) ?></div>
+            </div>
+        <?php endif; ?>
+        <?php if ($msgErr = flash('error')): ?>
+            <div class="container" style="padding-top:16px;">
+                <div class="alert alert-danger"><?= e($msgErr) ?></div>
+            </div>
+        <?php endif; ?>
         <?php include $viewFile; ?>
     </main>
     <?php include __DIR__ . '/partials/footer.php'; ?>

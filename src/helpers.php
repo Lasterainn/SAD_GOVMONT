@@ -78,3 +78,15 @@ if (!function_exists('icon')) {
         return '<svg class="ico" width="' . $s . '" height="' . $s . '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . $path . '</svg>';
     }
 }
+
+if (!function_exists('flash')) {
+    function flash(string $key, ?string $message = null): ?string {
+        if ($message !== null) {
+            $_SESSION['flash_' . $key] = $message;
+            return null;
+        }
+        $val = $_SESSION['flash_' . $key] ?? null;
+        unset($_SESSION['flash_' . $key]);
+        return $val;
+    }
+}

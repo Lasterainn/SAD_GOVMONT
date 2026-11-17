@@ -1,20 +1,19 @@
+<?php
+$roleLabel = $activeRole === 'admin'
+    ? 'Administrator'
+    : ($activeRole === 'pemerintah' ? 'Instansi Pemerintah' : 'Warga Jakarta');
+?>
 <section class="page-header-band">
   <div class="container">
     <span class="eyebrow">Selamat datang kembali,</span>
     <div class="title-row">
       <div>
         <h1><?= e($userName) ?></h1>
-        <p class="muted">Berikut ringkasan aktivitas Jakarta Connect hari ini.</p>
+        <p class="muted">Peran aktif: <strong><?= e($roleLabel) ?></strong> &middot; Data terhubung langsung ke PostgreSQL.</p>
       </div>
-
-      <div class="role-preview-box">
-        <span class="tiny muted">Pratinjau peran</span>
-        <div class="segmented-control" role="tablist" aria-label="Pratinjau peran dashboard">
-          <button type="button" class="seg-btn<?= $activeRole === 'masyarakat' ? ' active' : '' ?>" data-role-tab="masyarakat">Masyarakat</button>
-          <button type="button" class="seg-btn<?= $activeRole === 'pemerintah' ? ' active' : '' ?>" data-role-tab="pemerintah">Pemerintah</button>
-          <button type="button" class="seg-btn<?= $activeRole === 'admin' ? ' active' : '' ?>" data-role-tab="admin">Admin</button>
-        </div>
-        <span class="tiny muted">Mode demo &middot; tampilan menyesuaikan peran</span>
+      <div style="display:flex; gap:10px;">
+        <a href="/proyek" class="btn-outline btn-sm">Direktori Proyek</a>
+        <a href="/diskusi" class="btn-solid btn-sm">Ruang Diskusi</a>
       </div>
     </div>
   </div>
@@ -22,180 +21,142 @@
 
 <section class="page-content-band">
   <div class="container">
-    <!-- PANEL 1: MASYARAKAT (Sesuai Gambar 3) -->
-    <div class="role-panel<?= $activeRole === 'masyarakat' ? '' : ' hidden' ?>" id="panel-masyarakat">
+    <?php if ($activeRole === 'warga'): ?>
+      <!-- DASHBOARD WARGA -->
       <div class="kpi-grid-3">
         <div class="card kpi-card">
-          <span class="stat-icon stat-blue"><?= icon('bookmark', 20) ?></span>
+          <span class="stat-icon stat-blue"><?= icon('building', 20) ?></span>
           <div>
-            <strong>8</strong>
-            <span>Proyek diikuti</span>
+            <strong><?= (int)($proyekStats['total_proyek'] ?? 0) ?></strong>
+            <span>Proyek dipantau</span>
           </div>
         </div>
         <div class="card kpi-card">
           <span class="stat-icon stat-indigo"><?= icon('chat', 20) ?></span>
           <div>
-            <strong>12</strong>
-            <span>Diskusi saya</span>
+            <strong><?= (int)($wargaStats['forum_dibuat'] ?? 0) ?></strong>
+            <span>Topik diskusi saya</span>
           </div>
         </div>
         <div class="card kpi-card">
-          <span class="stat-icon stat-amber"><?= icon('bell', 20) ?></span>
+          <span class="stat-icon stat-green"><?= icon('send', 20) ?></span>
           <div>
-            <strong>5</strong>
-            <span>Notifikasi baru</span>
+            <strong><?= (int)($wargaStats['chat_dikirim'] ?? 0) ?></strong>
+            <span>Tanggapan dikirim</span>
           </div>
         </div>
       </div>
 
-      <div class="dashboard-split">
-        <div class="card panel-card">
-          <div class="panel-head">
-            <h3>Proyek yang Anda ikuti</h3>
-            <a href="/proyek" class="link-more small">Lihat semua <?= icon('arrow-right', 14) ?></a>
-          </div>
-
-          <div class="followed-list">
-            <?php foreach ($followedProjects as $fp): ?>
-              <div class="followed-item">
-                <div class="followed-thumb tone-<?= (int)$fp['tone'] ?>"></div>
-                <div class="followed-main">
-                  <div class="followed-top">
-                    <div>
-                      <strong><a href="/proyek/<?= e($fp['id']) ?>"><?= e($fp['title']) ?></a></strong>
-                      <span class="tiny muted"><?= e($fp['location']) ?></span>
-                    </div>
-                    <strong class="small"><?= (int)$fp['progress'] ?>%</strong>
+      <div class="card panel-card">
+        <div class="panel-head">
+          <h3>Proyek Pembangunan Terkini</h3>
+          <a href="/proyek" class="link-more small">Lihat semua <?= icon('arrow-right', 14) ?></a>
+        </div>
+        <div class="followed-list">
+          <?php foreach (array_slice($projects, 0, 5) as $fp): ?>
+            <div class="followed-item">
+              <div class="followed-thumb tone-<?= (int)$fp['tone'] ?>"></div>
+              <div class="followed-main">
+                <div class="followed-top">
+                  <div>
+                    <strong><a href="/proyek/<?= e($fp['id']) ?>"><?= e($fp['judul']) ?></a></strong>
+                    <span class="tiny muted"><?= e($fp['location']) ?> &middot; <?= e($fp['agency']) ?></span>
                   </div>
-                  <progress max="100" value="<?= (int)$fp['progress'] ?>"><?= (int)$fp['progress'] ?>%</progress>
+                  <strong class="small"><?= (int)$fp['progress'] ?>%</strong>
                 </div>
+                <progress max="100" value="<?= (int)$fp['progress'] ?>"><?= (int)$fp['progress'] ?>%</progress>
               </div>
-            <?php endforeach; ?>
-          </div>
-        </div>
-
-        <div class="card panel-card">
-          <div class="panel-head">
-            <h3>Aktivitas terbaru</h3>
-          </div>
-
-          <div class="activity-list">
-            <div class="activity-item">
-              <span class="activity-tag"><span class="dot dot-blue"></span> KEMAJUAN PROYEK</span>
-              <strong>Trotoar Rasuna Said mencapai 72%</strong>
-              <span class="tiny muted">2 jam</span>
             </div>
-            <div class="activity-item">
-              <span class="activity-tag"><span class="dot dot-indigo"></span> BALASAN BARU</span>
-              <strong>Dinas Perhubungan menjawab diskusi Anda</strong>
-              <span class="tiny muted">5 jam</span>
-            </div>
-            <div class="activity-item">
-              <span class="activity-tag"><span class="dot dot-green"></span> PENGUMUMAN</span>
-              <strong>Konsultasi publik Kota Tua dibuka</strong>
-              <span class="tiny muted">Kemarin</span>
-            </div>
-          </div>
-
-          <a href="/diskusi" class="btn-outline btn-block" style="margin-top: 16px;">Lihat semua notifikasi</a>
+          <?php endforeach; ?>
         </div>
       </div>
-    </div>
 
-    <!-- PANEL 2: PEMERINTAH (Flat View) -->
-    <div class="role-panel<?= $activeRole === 'pemerintah' ? '' : ' hidden' ?>" id="panel-pemerintah">
+    <?php elseif ($activeRole === 'pemerintah'): ?>
+      <!-- DASHBOARD PEMERINTAH -->
       <div class="kpi-grid-3">
         <div class="card kpi-card">
           <span class="stat-icon stat-blue"><?= icon('building', 20) ?></span>
           <div>
-            <strong>14</strong>
-            <span>Proyek instansi</span>
+            <strong><?= (int)($proyekStats['total_proyek'] ?? 0) ?></strong>
+            <span>Total proyek terdaftar</span>
           </div>
         </div>
         <div class="card kpi-card">
           <span class="stat-icon stat-amber"><?= icon('clock', 20) ?></span>
           <div>
-            <strong>3</strong>
-            <span>Menunggu konfirmasi</span>
+            <strong><?= (int)($proyekStats['dalam_pengerjaan'] ?? 0) ?></strong>
+            <span>Dalam pengerjaan</span>
           </div>
         </div>
         <div class="card kpi-card">
-          <span class="stat-icon stat-green"><?= icon('chat', 20) ?></span>
+          <span class="stat-icon stat-green"><?= icon('check-circle', 20) ?></span>
           <div>
-            <strong>29</strong>
-            <span>Aspirasi warga masuk</span>
+            <strong><?= (int)($proyekStats['selesai'] ?? 0) ?></strong>
+            <span>Proyek selesai</span>
           </div>
         </div>
       </div>
 
-      <div class="dashboard-split">
-        <div class="card panel-card">
-          <div class="panel-head">
-            <h3>Proyek Instansi &amp; Pembaruan Progres</h3>
-            <a href="/proyek" class="link-more small">Direktori <?= icon('arrow-right', 14) ?></a>
-          </div>
-          <div class="followed-list">
-            <?php foreach ($followedProjects as $fp): ?>
-              <div class="followed-item">
-                <div class="followed-thumb tone-<?= (int)$fp['tone'] ?>"></div>
-                <div class="followed-main">
-                  <div class="followed-top">
-                    <div>
-                      <strong><a href="/proyek/<?= e($fp['id']) ?>"><?= e($fp['title']) ?></a></strong>
-                      <span class="tiny muted"><?= e($fp['agency']) ?> &middot; <?= e($fp['budget']) ?></span>
-                    </div>
-                    <span class="pill pill-blue pill-xs"><?= (int)$fp['progress'] ?>%</span>
-                  </div>
-                  <progress max="100" value="<?= (int)$fp['progress'] ?>"><?= (int)$fp['progress'] ?>%</progress>
-                </div>
-              </div>
-            <?php endforeach; ?>
-          </div>
+      <div class="card panel-card">
+        <div class="panel-head">
+          <h3>Daftar Proyek &amp; Status Konfirmasi</h3>
+          <span class="tiny muted">Klik proyek untuk mengisi RAB, tahapan &amp; konfirmasi</span>
         </div>
-
-        <div class="card panel-card">
-          <div class="panel-head">
-            <h3>Tindak Lanjut &amp; Konfirmasi</h3>
-          </div>
-          <div class="activity-list">
-            <div class="activity-item">
-              <span class="activity-tag"><span class="dot dot-amber"></span> DRAFT ADMIN</span>
-              <strong>Lengkapi RAB &amp; jadwal Revitalisasi JPO Pasar Minggu</strong>
-              <span class="tiny muted">Baru ditugaskan</span>
-            </div>
-            <div class="activity-item">
-              <span class="activity-tag"><span class="dot dot-blue"></span> DISKUSI TERKAIT</span>
-              <strong>24 warga menanyakan pelican crossing Stasiun Manggarai</strong>
-              <span class="tiny muted">20 menit lalu</span>
-            </div>
-          </div>
-          <a href="/diskusi" class="btn-solid btn-block" style="margin-top: 16px;">Tanggapi Diskusi Warga</a>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Judul Proyek</th>
+                <th>Biaya Pengadaan</th>
+                <th>Progres</th>
+                <th>Konfirmasi</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              <?php foreach ($projects as $ap): ?>
+                <tr>
+                  <td>
+                    <strong><a href="/proyek/<?= e($ap['id']) ?>"><?= e($ap['judul']) ?></a></strong>
+                    <span class="tiny muted"><?= e($ap['location']) ?></span>
+                  </td>
+                  <td class="small"><?= e($ap['budget_formatted']) ?></td>
+                  <td><strong><?= (int)$ap['progress'] ?>%</strong></td>
+                  <td>
+                    <span class="pill <?= $ap['status_konfirmasi'] === 'terkonfirmasi' ? 'pill-green' : 'pill-amber' ?> pill-xs">
+                      <?= e($ap['status_konfirmasi']) ?>
+                    </span>
+                  </td>
+                  <td><a href="/proyek/<?= e($ap['id']) ?>" class="btn-outline btn-sm">Kelola</a></td>
+                </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
         </div>
       </div>
-    </div>
 
-    <!-- PANEL 3: ADMIN (Tampilan Flat Dashboard Admin) -->
-    <div class="role-panel<?= $activeRole === 'admin' ? '' : ' hidden' ?>" id="panel-admin">
+    <?php else: ?>
+      <!-- DASHBOARD ADMIN -->
       <div class="kpi-grid-3">
         <div class="card kpi-card">
           <span class="stat-icon stat-blue"><?= icon('users', 20) ?></span>
           <div>
-            <strong>3.842</strong>
+            <strong><?= (int)($adminStats['jumlah_warga'] ?? 0) ?></strong>
             <span>Warga terdaftar</span>
           </div>
         </div>
         <div class="card kpi-card">
           <span class="stat-icon stat-indigo"><?= icon('building', 20) ?></span>
           <div>
-            <strong>18</strong>
+            <strong><?= (int)($adminStats['jumlah_pemerintah'] ?? 0) ?></strong>
             <span>Akun instansi pemerintah</span>
           </div>
         </div>
         <div class="card kpi-card">
-          <span class="stat-icon stat-amber"><?= icon('shield', 20) ?></span>
+          <span class="stat-icon stat-green"><?= icon('shield', 20) ?></span>
           <div>
-            <strong>4</strong>
-            <span>Antrean moderasi &amp; proyek</span>
+            <strong><?= !empty($adminStats['hash_chain_valid']) ? 'Valid' : 'Periksa!' ?></strong>
+            <span>Integritas Hash Chain Log</span>
           </div>
         </div>
       </div>
@@ -203,10 +164,8 @@
       <div class="dashboard-split">
         <div class="card panel-card">
           <div class="panel-head">
-            <h3>Kelola Kerangka Proyek &amp; Status</h3>
-            <button type="button" class="btn-solid btn-sm" id="adminAddProjectBtn">
-              <?= icon('plus', 15) ?> Tambah Proyek
-            </button>
+            <h3>Manajemen Proyek Pembangunan</h3>
+            <a href="/proyek" class="btn-solid btn-sm"><?= icon('plus', 15) ?> Kelola / Tambah</a>
           </div>
 
           <div class="admin-table-wrap">
@@ -214,21 +173,25 @@
               <thead>
                 <tr>
                   <th>Judul Proyek</th>
-                  <th>Instansi</th>
                   <th>Progres</th>
-                  <th>Status</th>
+                  <th>Konfirmasi</th>
+                  <th>Aksi</th>
                 </tr>
               </thead>
               <tbody>
-                <?php foreach ($adminProjects as $ap): ?>
+                <?php foreach ($projects as $ap): ?>
                   <tr>
                     <td>
                       <strong><a href="/proyek/<?= e($ap['id']) ?>"><?= e($ap['judul']) ?></a></strong>
-                      <span class="tiny muted">Diperbarui <?= e($ap['updated']) ?></span>
+                      <span class="tiny muted"><?= e($ap['agency']) ?></span>
                     </td>
-                    <td class="small muted"><?= e($ap['instansi']) ?></td>
-                    <td><strong><?= (int)$ap['progres'] ?>%</strong></td>
-                    <td><span class="pill <?= e($ap['badge']) ?> pill-xs"><?= e($ap['status']) ?></span></td>
+                    <td><strong><?= (int)$ap['progress'] ?>%</strong></td>
+                    <td>
+                      <span class="pill <?= $ap['status_konfirmasi'] === 'terkonfirmasi' ? 'pill-green' : 'pill-amber' ?> pill-xs">
+                        <?= e($ap['status_konfirmasi']) ?>
+                      </span>
+                    </td>
+                    <td><a href="/proyek/<?= e($ap['id']) ?>" class="btn-outline btn-sm">Edit</a></td>
                   </tr>
                 <?php endforeach; ?>
               </tbody>
@@ -238,28 +201,24 @@
 
         <div class="card panel-card">
           <div class="panel-head">
-            <h3>Moderasi Forum &amp; Audit Sistem</h3>
+            <h3>Jejak Audit Log Terbaru (Append-Only)</h3>
           </div>
 
           <div class="activity-list">
-            <?php foreach ($adminModeration as $mod): ?>
-              <div class="activity-item">
-                <span class="activity-tag"><span class="dot <?= e($mod['dot']) ?>"></span> <?= e($mod['tag']) ?></span>
-                <strong><?= e($mod['title']) ?></strong>
-                <div class="mod-foot">
-                  <span class="tiny muted"><?= e($mod['author']) ?></span>
-                  <span class="pill pill-blue pill-xs"><?= e($mod['status']) ?></span>
+            <?php if (empty($auditLogs)): ?>
+              <p class="small muted">Belum ada entri log aktivitas.</p>
+            <?php else: ?>
+              <?php foreach ($auditLogs as $log): ?>
+                <div class="activity-item">
+                  <span class="activity-tag"><span class="dot dot-blue"></span> <?= e($log['sumber']) ?> &middot; <?= e(strtoupper($log['aksi'])) ?></span>
+                  <strong class="small">Aktor: <?= e($log['role']) ?></strong>
+                  <span class="tiny muted"><?= e(date('d M Y H:i:s', strtotime($log['created_at']))) ?></span>
                 </div>
-              </div>
-            <?php endforeach; ?>
-          </div>
-
-          <div class="admin-quick-actions">
-            <a href="/proyek" class="btn-outline">Lihat Direktori Proyek</a>
-            <a href="/diskusi" class="btn-solid">Buka Ruang Diskusi</a>
+              <?php endforeach; ?>
+            <?php endif; ?>
           </div>
         </div>
       </div>
-    </div>
+    <?php endif; ?>
   </div>
 </section>

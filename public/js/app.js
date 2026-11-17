@@ -44,15 +44,19 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 3. Footer Newsletter & Admin Flat Button (CSP-clean)
+    // 3. Footer Newsletter & Konfirmasi Hapus Proyek
     document.getElementById('footerNewsletterForm')?.addEventListener('submit', function (e) {
         e.preventDefault();
         alert('Terima kasih! Email Anda terdaftar untuk kabar JakartaConnect.');
         this.reset();
     });
 
-    document.getElementById('adminAddProjectBtn')?.addEventListener('click', () => {
-        alert('Mode flat: Form tambah kerangka proyek admin.');
+    document.querySelectorAll('.confirm-delete-form').forEach(form => {
+        form.addEventListener('submit', (e) => {
+            if (!confirm('Yakin ingin menghapus proyek ini dari database PostgreSQL?')) {
+                e.preventDefault();
+            }
+        });
     });
 
     // 4. Global Quick Searchbar (Navbar & Ctrl+K)
@@ -80,6 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (e.key === 'Escape') {
             gsModal?.classList.add('hidden');
             document.getElementById('newDiscussionModal')?.classList.add('hidden');
+            document.getElementById('newProjectModal')?.classList.add('hidden');
         }
     });
 
@@ -125,14 +130,6 @@ document.addEventListener('DOMContentLoaded', () => {
             filterDiscussions();
         }
 
-        const likeBtn = e.target.closest('.like-toggle');
-        if (likeBtn) {
-            const active = likeBtn.classList.toggle('is-active');
-            const base = parseInt(likeBtn.dataset.likeCount || '0', 10);
-            const numEl = likeBtn.querySelector('.like-num');
-            if (numEl) numEl.textContent = String(base + (active ? 1 : 0));
-        }
-
         const copyBtn = e.target.closest('.copy-link-btn');
         if (copyBtn) {
             navigator.clipboard?.writeText(window.location.href);
@@ -142,7 +139,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // 6. Halaman Proyek: Toggle Grid / Peta, Filter, Sorting & Peta Interaktif
+    // 6. Modal Tambah Proyek Admin (/proyek)
+    const prjModal = document.getElementById('newProjectModal');
+    document.getElementById('openNewProjectModal')?.addEventListener('click', () => prjModal?.classList.remove('hidden'));
+    document.getElementById('closeNewProjectModal')?.addEventListener('click', () => prjModal?.classList.add('hidden'));
+    document.getElementById('cancelNewProjectModal')?.addEventListener('click', () => prjModal?.classList.add('hidden'));
+    prjModal?.addEventListener('click', (e) => {
+        if (e.target === prjModal) prjModal.classList.add('hidden');
+    });
+
+    // 7. Halaman Proyek: Toggle Grid / Peta, Filter, Sorting & Peta Interaktif
     const viewButtons = document.querySelectorAll('[data-view-target]');
     const gridView = document.getElementById('projectsGridView');
     const mapView = document.getElementById('projectsMapView');
@@ -255,7 +261,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (mapLayer) mapLayer.style.transform = 'scale(1)';
     });
 
-    // 7. Halaman Diskusi: Filter Kategori, Chip Cepat, Searchbar, Sorting & Modal Buat Diskusi
+    // 8. Halaman Diskusi: Filter Kategori, Chip Cepat, Searchbar, Sorting & Modal Buat Diskusi
     const catButtons = document.querySelectorAll('.cat-btn');
     const quickChips = document.querySelectorAll('.chip-btn');
     const discussionSearch = document.getElementById('discussionSearch');
@@ -271,13 +277,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!items.length) return;
 
         const q = (discussionSearch?.value || '').trim().toLowerCase();
-        const sortBy = discussionSort?.value || 'popular';
+        const sortBy = discussionSort?.value || 'latest';
         const saved = getSavedIds();
 
         items.sort((a, b) => {
             if (sortBy === 'comments') return Number(b.dataset.comments) - Number(a.dataset.comments);
-            if (sortBy === 'latest') return Number(a.dataset.order) - Number(b.dataset.order);
-            return Number(b.dataset.likes) - Number(a.dataset.likes);
+            return Number(a.dataset.order) - Number(b.dataset.order);
         });
 
         let visible = 0;
@@ -286,7 +291,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const matchCat = !activeCategory || item.dataset.category === activeCategory;
             const matchQ = !q || item.dataset.search.includes(q);
             let matchQuick = true;
-            if (activeQuick === 'official') matchQuick = item.dataset.official === '1';
             if (activeQuick === 'project') matchQuick = item.dataset.hasProject === '1';
             if (activeQuick === 'saved') matchQuick = saved.includes(item.dataset.discId);
 
@@ -329,71 +333,24 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     const modal = document.getElementById('newDiscussionModal');
-    const openModalBtn = document.getElementById('openNewDiscussionModal');
-    const closeModalBtn = document.getElementById('closeNewDiscussionModal');
-    const cancelModalBtn = document.getElementById('cancelNewDiscussion');
-    const newDiscForm = document.getElementById('newDiscussionForm');
+    document.getElementById('openNewDiscussionModal')?.addEventListener('click', () => modal?.classList.remove('hidden'));
+    document.getElementById('closeNewDiscussionModal')?.addEventListener('click', () => modal?.classList.add('hidden'));
+    document.getElementById('cancelNewDiscussion')?.addEventListener('click', () => modal?.classList.add('hidden'));
+    modal?.addEventListener('click', (e) => {
+        if (e.target === modal) modal.classList.add('hidden');
+    });
 
-    if (modal && openModalBtn) {
-        openModalBtn.addEventListener('click', () => modal.classList.remove('hidden'));
-        closeModalBtn?.addEventListener('click', () => modal.classList.add('hidden'));
-        cancelModalBtn?.addEventListener('click', () => modal.classList.add('hidden'));
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) modal.classList.add('hidden');
-        });
-        newDiscForm?.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const titleVal = document.getElementById('discTitle').value.trim();
-            const catVal = document.getElementById('discCategory').value;
-            const bodyVal = document.getElementById('discBody').value.trim();
-            if (!titleVal || !bodyVal) return;
-
-            const wrapper = document.createElement('div');
-            wrapper.className = 'discussion-filter-item';
-            wrapper.dataset.order = '-1';
-            wrapper.dataset.discId = 'dsc-01';
-            wrapper.dataset.search = `${titleVal} ${bodyVal} rani prameswari ${catVal}`.toLowerCase();
-            wrapper.dataset.category = catVal;
-            wrapper.dataset.official = '0';
-            wrapper.dataset.hasProject = '0';
-            wrapper.dataset.likes = '1';
-            wrapper.dataset.comments = '0';
-
-            wrapper.innerHTML = `
-              <article class="card discussion">
-                <span class="avatar av-1">RP</span>
-                <div class="discussion-main">
-                  <div class="meta small"><strong>Rani Prameswari</strong> <span class="muted">&middot; Baru saja</span></div>
-                  <h3><a href="/diskusi/dsc-01"></a></h3>
-                  <p class="muted small"></p>
-                  <div class="actions tiny muted actions-ruled">
-                    <span>0 tanggapan</span>
-                    <span>1 suka</span>
-                  </div>
-                </div>
-                <span class="tag"></span>
-              </article>`;
-            wrapper.querySelector('h3 a').textContent = titleVal;
-            wrapper.querySelector('p').textContent = bodyVal;
-            wrapper.querySelector('.tag').textContent = catVal;
-
-            discussionFeed?.prepend(wrapper);
-            newDiscForm.reset();
-            modal.classList.add('hidden');
-            filterDiscussions();
-        });
-    }
-
-    // 8. Halaman Detail Diskusi: Balas Komentar, Filter Resmi & Kirim Tanggapan
+    // 9. Halaman Detail Diskusi: Balas Komentar, Edit Topik, Edit Komentar & Moderasi Admin
     const replyBanner = document.getElementById('replyingToBanner');
     const replyTargetName = document.getElementById('replyingToName');
+    const replyParentInput = document.getElementById('replyParentIdInput');
     const replyInput = document.getElementById('replyInputText');
-    let replyPrefix = '';
 
     document.querySelectorAll('.reply-to-btn').forEach(btn => {
         btn.addEventListener('click', () => {
+            const parentId = btn.dataset.replyId || '';
             const author = btn.dataset.replyAuthor || '';
-            replyPrefix = `@${author} `;
+            if (replyParentInput) replyParentInput.value = parentId;
             if (replyTargetName) replyTargetName.textContent = author;
             replyBanner?.classList.remove('hidden');
             replyInput?.focus();
@@ -401,55 +358,23 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('cancelReplyTarget')?.addEventListener('click', () => {
-        replyPrefix = '';
+        if (replyParentInput) replyParentInput.value = '';
         replyBanner?.classList.add('hidden');
     });
 
-    document.getElementById('replyFilterSelect')?.addEventListener('change', function () {
-        const onlyOfficial = this.value === 'official';
-        document.querySelectorAll('.comment-card').forEach(card => {
-            card.classList.toggle('hidden', onlyOfficial && card.dataset.official !== '1');
+    const editTopicForm = document.getElementById('editTopicForm');
+    document.getElementById('toggleEditTopicBtn')?.addEventListener('click', () => editTopicForm?.classList.toggle('hidden'));
+    document.getElementById('cancelEditTopicBtn')?.addEventListener('click', () => editTopicForm?.classList.add('hidden'));
+
+    document.querySelectorAll('.toggle-edit-chat').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.getElementById(`edit-chat-form-${btn.dataset.chatId}`)?.classList.toggle('hidden');
         });
     });
 
-    document.getElementById('threadReplyForm')?.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const text = (replyInput?.value || '').trim();
-        if (!text) return;
-
-        const list = document.getElementById('commentThreadList');
-        const newCard = document.createElement('div');
-        newCard.className = 'comment-card';
-        newCard.dataset.official = '0';
-        newCard.innerHTML = `
-          <div class="comment-head">
-            <span class="avatar avatar-sm av-1">RP</span>
-            <div class="meta small"><strong>Rani Prameswari</strong> <span class="muted">&middot; Baru saja</span></div>
-          </div>
-          <p class="comment-text"></p>`;
-        newCard.querySelector('.comment-text').textContent = replyPrefix + text;
-        list?.prepend(newCard);
-
-        const countEl = document.getElementById('replyTotalCount');
-        if (countEl) countEl.textContent = String(Number(countEl.textContent || '0') + 1);
-
-        replyInput.value = '';
-        replyPrefix = '';
-        replyBanner?.classList.add('hidden');
-    });
-
-    // 9. Halaman Dashboard: Switcher Pratinjau Peran (Masyarakat | Pemerintah | Admin)
-    const roleTabs = document.querySelectorAll('[data-role-tab]');
-    const rolePanels = document.querySelectorAll('.role-panel');
-
-    roleTabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            const role = tab.dataset.roleTab;
-            roleTabs.forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-            rolePanels.forEach(panel => {
-                panel.classList.toggle('hidden', panel.id !== `panel-${role}`);
-            });
+    document.querySelectorAll('.toggle-mod-chat').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.getElementById(`mod-chat-form-${btn.dataset.chatId}`)?.classList.toggle('hidden');
         });
     });
 });

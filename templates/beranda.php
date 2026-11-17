@@ -17,23 +17,33 @@
           <span class="avatar av-3">DA</span>
         </div>
         <div class="social-proof-text">
-          <strong>12.400+ warga</strong>
-          <span>sudah bergabung</span>
+          <strong><?= (int)($stats['total_warga'] ?? 0) ?> warga</strong>
+          <span>terdaftar aktif</span>
         </div>
       </div>
     </div>
 
     <div class="hero-visual">
       <div class="hero-photo-card">
-        <span class="hero-live-badge"><span class="live-dot"></span> 4 proyek aktif</span>
+        <span class="hero-live-badge"><span class="live-dot"></span> <?= (int)($stats['dalam_pengerjaan'] ?? 0) ?> proyek aktif</span>
         <div class="hero-skyline-art" aria-hidden="true"></div>
-        <a href="/proyek/prj-01" class="hero-featured-overlay">
-          <div>
-            <span class="tiny muted"><?= icon('pin', 13) ?> Proyek unggulan</span>
-            <strong>Revitalisasi Trotoar Rasuna Said</strong>
-          </div>
-          <span class="featured-arrow"><?= icon('chevron', 18) ?></span>
-        </a>
+        <?php if (!empty($featured)): ?>
+          <a href="/proyek/<?= e($featured['id']) ?>" class="hero-featured-overlay">
+            <div>
+              <span class="tiny muted"><?= icon('pin', 13) ?> Proyek unggulan</span>
+              <strong><?= e($featured['judul']) ?></strong>
+            </div>
+            <span class="featured-arrow"><?= icon('chevron', 18) ?></span>
+          </a>
+        <?php else: ?>
+          <a href="/proyek" class="hero-featured-overlay">
+            <div>
+              <span class="tiny muted"><?= icon('pin', 13) ?> Direktori</span>
+              <strong>Jelajahi Proyek Jakarta</strong>
+            </div>
+            <span class="featured-arrow"><?= icon('chevron', 18) ?></span>
+          </a>
+        <?php endif; ?>
       </div>
     </div>
   </div>
@@ -43,28 +53,28 @@
       <div class="stat-item">
         <span class="stat-icon stat-blue"><?= icon('building', 20) ?></span>
         <div>
-          <strong>248</strong>
+          <strong><?= (int)($stats['total_proyek'] ?? 0) ?></strong>
           <span>Total proyek</span>
         </div>
       </div>
       <div class="stat-item">
         <span class="stat-icon stat-amber"><?= icon('clock', 20) ?></span>
         <div>
-          <strong>86</strong>
+          <strong><?= (int)($stats['dalam_pengerjaan'] ?? 0) ?></strong>
           <span>Dalam pengerjaan</span>
         </div>
       </div>
       <div class="stat-item">
         <span class="stat-icon stat-green"><?= icon('check-circle', 20) ?></span>
         <div>
-          <strong>142</strong>
+          <strong><?= (int)($stats['selesai'] ?? 0) ?></strong>
           <span>Proyek selesai</span>
         </div>
       </div>
       <div class="stat-item">
         <span class="stat-icon stat-indigo"><?= icon('chat', 20) ?></span>
         <div>
-          <strong>3.842</strong>
+          <strong><?= (int)($stats['total_forum'] ?? 0) ?></strong>
           <span>Diskusi warga</span>
         </div>
       </div>
@@ -117,35 +127,6 @@
         <p>Sampaikan pertanyaan, usulan, atau masukan langsung ke sesama warga dan instansi pemerintah.</p>
         <a href="/diskusi" class="btn-solid btn-block">Mulai berdiskusi <?= icon('arrow-right', 16) ?></a>
       </aside>
-    </div>
-  </div>
-</section>
-
-<section class="page-section" id="agenda">
-  <div class="container">
-    <div class="section-head">
-      <div>
-        <span class="eyebrow">AGENDA KOTA</span>
-        <h2>Yang akan datang di Jakarta</h2>
-      </div>
-      <a href="/diskusi" class="link-more">Lihat semua agenda <?= icon('arrow-right', 15) ?></a>
-    </div>
-
-    <div class="grid-3">
-      <?php foreach ($events as $ev): ?>
-        <article class="card event-card">
-          <div class="event-date">
-            <strong><?= e($ev['day']) ?></strong>
-            <span><?= e($ev['month']) ?></span>
-          </div>
-          <div class="event-info">
-            <span class="pill pill-blue pill-xs"><?= e($ev['badge']) ?></span>
-            <h3><?= e($ev['title']) ?></h3>
-            <span class="tiny muted"><?= icon('pin', 13) ?> <?= e($ev['location']) ?></span>
-          </div>
-          <span class="muted row-chevron"><?= icon('chevron', 16) ?></span>
-        </article>
-      <?php endforeach; ?>
     </div>
   </div>
 </section>

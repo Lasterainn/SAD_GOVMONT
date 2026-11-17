@@ -1,8 +1,17 @@
 <?php
 $isLoggedIn  = !empty($_SESSION['logged_in']);
-$displayName = $_SESSION['user_name'] ?? 'Rani Prameswari';
+$displayName = $_SESSION['user_name'] ?? 'Warga Jakarta';
 $nameParts   = preg_split('/\s+/', trim($displayName)) ?: ['Warga'];
 $shortName   = $nameParts[0] . (isset($nameParts[1]) && $nameParts[1] !== '' ? ' ' . mb_substr($nameParts[1], 0, 1) . '.' : '');
+
+$gsProjects = [];
+$gsForums   = [];
+try {
+    $gsProjects = array_slice((new \App\Models\ProyekModel())->all(), 0, 8);
+    $gsForums   = array_slice((new \App\Models\ForumModel())->allForums(), 0, 8);
+} catch (\Throwable $e) {
+    // Tetap aman jika database belum dimigrasi
+}
 ?>
 <header class="topbar">
   <div class="container topbar-inner">
@@ -26,7 +35,7 @@ $shortName   = $nameParts[0] . (isset($nameParts[1]) && $nameParts[1] !== '' ? '
       </button>
 
       <?php if ($isLoggedIn): ?>
-        <a href="/dashboard" class="icon-btn notif-btn" title="Notifikasi" aria-label="Notifikasi">
+        <a href="/dashboard" class="icon-btn notif-btn" title="Dashboard" aria-label="Dashboard">
           <?= icon('bell', 18) ?>
           <span class="notif-dot"></span>
         </a>
@@ -55,26 +64,34 @@ $shortName   = $nameParts[0] . (isset($nameParts[1]) && $nameParts[1] !== '' ? '
     </div>
     <div class="global-search-results" id="globalSearchResults">
       <div class="gs-section-label">Proyek Pembangunan</div>
-      <?php foreach (\App\Data\MockData::projects() as $gp): ?>
-        <a href="/proyek/<?= e($gp['id']) ?>" class="gs-item" data-gs-text="<?= e(mb_strtolower($gp['title'] . ' ' . $gp['location'] . ' ' . $gp['agency'] . ' ' . $gp['category'])) ?>">
-          <div>
-            <strong><?= e($gp['title']) ?></strong>
-            <span class="tiny muted"><?= e($gp['location']) ?> &middot; <?= e($gp['agency']) ?></span>
-          </div>
-          <span class="pill pill-blue pill-xs"><?= (int)$gp['progress'] ?>%</span>
-        </a>
-      <?php endforeach; ?>
+      <?php if (empty($gsProjects)): ?>
+        <p class="tiny muted" style="padding: 8px 12px;">Belum ada data proyek di database.</p>
+      <?php else: ?>
+        <?php foreach ($gsProjects as $gp): ?>
+          <a href="/proyek/<?= e($gp['id']) ?>" class="gs-item" data-gs-text="<?= e(mb_strtolower($gp['judul'] . ' ' . $gp['location'] . ' ' . $gp['agency'] . ' ' . ($gp['kategori'] ?? ''))) ?>">
+            <div>
+              <strong><?= e($gp['judul']) ?></strong>
+              <span class="tiny muted"><?= e($gp['location']) ?> &middot; <?= e($gp['agency']) ?></span>
+            </div>
+            <span class="pill pill-blue pill-xs"><?= (int)$gp['progress'] ?>%</span>
+          </a>
+        <?php endforeach; ?>
+      <?php endif; ?>
 
       <div class="gs-section-label" style="margin-top: 12px;">Ruang Diskusi Warga</div>
-      <?php foreach (\App\Data\MockData::discussions() as $gd): ?>
-        <a href="/diskusi/<?= e($gd['id']) ?>" class="gs-item" data-gs-text="<?= e(mb_strtolower($gd['title'] . ' ' . $gd['excerpt'] . ' ' . $gd['author'] . ' ' . $gd['category'])) ?>">
-          <div>
-            <strong><?= e($gd['title']) ?></strong>
-            <span class="tiny muted">Oleh <?= e($gd['author']) ?> &middot; <?= (int)$gd['comments'] ?> tanggapan</span>
-          </div>
-          <span class="tag"><?= e($gd['category']) ?></span>
-        </a>
-      <?php endforeach; ?>
+      <?php if (empty($gsForums)): ?>
+        <p class="tiny muted" style="padding: 8px 12px;">Belum ada topik diskusi di database.</p>
+      <?php else: ?>
+        <?php foreach ($gsForums as $gd): ?>
+          <a href="/diskusi/<?= e($gd['id']) ?>" class="gs-item" data-gs-text="<?= e(mb_strtolower($gd['judul'] . ' ' . $gd['excerpt'] . ' ' . $gd['author_name'] . ' ' . $gd['category_label'])) ?>">
+            <div>
+              <strong><?= e($gd['judul']) ?></strong>
+              <span class="tiny muted">Oleh <?= e($gd['author_name']) ?> &middot; <?= (int)$gd['comments_count'] ?> tanggapan</span>
+            </div>
+            <span class="tag"><?= e($gd['category_label']) ?></span>
+          </a>
+        <?php endforeach; ?>
+      <?php endif; ?>
     </div>
   </div>
 </div>

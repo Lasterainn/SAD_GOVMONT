@@ -187,4 +187,35 @@ class User {
         ");
         $stmt->execute(['id' => $id]);
     }
+    
+    public function getAdminDashboardStats(): array {
+        $row = $this->db->query("SELECT * FROM jakarta_connect.v_dashboard_admin")->fetch() ?: [];
+        $validLogin  = (bool)$this->db->query("SELECT COALESCE(bool_and(rantai_valid), true) FROM jakarta_connect.v_verifikasi_log_login")->fetchColumn();
+        $validForum  = (bool)$this->db->query("SELECT COALESCE(bool_and(rantai_valid), true) FROM jakarta_connect.v_verifikasi_log_forum")->fetchColumn();
+        $validProyek = (bool)$this->db->query("SELECT COALESCE(bool_and(rantai_valid), true) FROM jakarta_connect.v_verifikasi_log_proyek")->fetchColumn();
+
+        return array_merge([
+            'jumlah_warga'      => 0,
+            'jumlah_pemerintah' => 0,
+            'jumlah_admin'      => 0,
+            'login_sukses_24jam'=> 0,
+            'login_gagal_24jam' => 0,
+            'chat_24jam'        => 0,
+        ], $row, [
+            'hash_chain_valid' => ($validLogin && $validForum && $validProyek),
+        ]);
+    }
+
+    public function getWargaStats(string $wargaId): array {
+        $stmtF = $this->db->prepare("SELECT COUNT(*) FROM jakarta_connect.tbl_forum WHERE warga_id = :id");
+        $stmtF->execute(['id' => $wargaId]);
+
+        $stmtC = $this->db->prepare("SELECT COUNT(*) FROM jakarta_connect.tbl_chat WHERE warga_id = :id AND dihapus = false");
+        $stmtC->execute(['id' => $wargaId]);
+
+        return [
+            'forum_dibuat' => (int)$stmtF->fetchColumn(),
+            'chat_dikirim' => (int)$stmtC->fetchColumn(),
+        ];
+    }
 }

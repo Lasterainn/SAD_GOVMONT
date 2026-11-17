@@ -1,3 +1,6 @@
+<?php
+$isAdmin = !empty($_SESSION['logged_in']) && ($_SESSION['user_role'] ?? '') === 'admin';
+?>
 <section class="page-header-band">
   <div class="container">
     <span class="pill pill-blue">Direktori pembangunan</span>
@@ -7,9 +10,17 @@
         <p class="muted">Temukan dan pantau pembangunan di lingkungan Anda.</p>
       </div>
 
-      <div class="segmented-control" role="tablist" aria-label="Mode tampilan proyek">
-        <button type="button" class="seg-btn<?= $initialView === 'grid' ? ' active' : '' ?>" data-view-target="grid"><?= icon('grid', 15) ?> Grid</button>
-        <button type="button" class="seg-btn<?= $initialView === 'map' ? ' active' : '' ?>" data-view-target="map"><?= icon('map', 15) ?> Peta</button>
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <?php if ($isAdmin): ?>
+          <button type="button" class="btn-solid btn-sm" id="openNewProjectModal">
+            <?= icon('plus', 15) ?> Tambah Proyek
+          </button>
+        <?php endif; ?>
+
+        <div class="segmented-control" role="tablist" aria-label="Mode tampilan proyek">
+          <button type="button" class="seg-btn<?= $initialView === 'grid' ? ' active' : '' ?>" data-view-target="grid"><?= icon('grid', 15) ?> Grid</button>
+          <button type="button" class="seg-btn<?= $initialView === 'map' ? ' active' : '' ?>" data-view-target="map"><?= icon('map', 15) ?> Peta</button>
+        </div>
       </div>
     </div>
 
@@ -46,9 +57,9 @@
         <div class="select-wrap">
           <select id="projectStatus" aria-label="Filter status">
             <option value="">Semua Status</option>
-            <option value="ongoing">Dalam pengerjaan</option>
-            <option value="done">Selesai</option>
-            <option value="planned">Direncanakan</option>
+            <option value="dalam_pengerjaan">Dalam pengerjaan</option>
+            <option value="selesai">Selesai</option>
+            <option value="direncanakan">Direncanakan</option>
           </select>
         </div>
 
@@ -78,20 +89,20 @@
       <?php foreach ($projects as $idx => $p): ?>
         <div class="project-filter-item"
              data-order="<?= $idx ?>"
-             data-title="<?= e(mb_strtolower($p['title'] . ' ' . $p['location'] . ' ' . $p['kelurahan'] . ' ' . $p['agency'])) ?>"
-             data-raw-title="<?= e(mb_strtolower($p['title'])) ?>"
-             data-wilayah="<?= e($p['wilayah']) ?>"
-             data-category="<?= e($p['category']) ?>"
-             data-status="<?= e($p['status']) ?>"
+             data-title="<?= e(mb_strtolower($p['judul'] . ' ' . $p['location'] . ' ' . ($p['lokasi_kelurahan'] ?? '') . ' ' . $p['agency'])) ?>"
+             data-raw-title="<?= e(mb_strtolower($p['judul'])) ?>"
+             data-wilayah="<?= e($p['lokasi_kota'] ?? '') ?>"
+             data-category="<?= e($p['kategori'] ?? '') ?>"
+             data-status="<?= e($p['status_proyek']) ?>"
              data-progress="<?= (int)$p['progress'] ?>">
           <?php include __DIR__ . '/partials/project_card.php'; ?>
         </div>
       <?php endforeach; ?>
     </div>
 
-    <div id="projectsEmptyState" class="card empty-state hidden">
-      <h3>Tidak ada proyek yang sesuai filter</h3>
-      <p class="muted small">Coba ubah kata kunci pencarian atau atur ulang filter wilayah dan kategori.</p>
+    <div id="projectsEmptyState" class="card empty-state<?= empty($projects) ? '' : ' hidden' ?>">
+      <h3>Tidak ada proyek ditemukan</h3>
+      <p class="muted small">Belum ada proyek yang sesuai filter atau data proyek belum ditambahkan.</p>
       <button type="button" class="btn-solid btn-sm" id="emptyResetProjects">Tampilkan Semua Proyek</button>
     </div>
 
@@ -139,19 +150,20 @@
 
             <?php foreach ($projects as $idx => $p): ?>
               <?php
-                $pinColor = $p['status'] === 'done' ? 'pin-green' : ($p['status'] === 'planned' ? 'pin-amber' : 'pin-blue');
+                $stKey    = $p['status_proyek'];
+                $pinColor = $stKey === 'selesai' ? 'pin-green' : ($stKey === 'direncanakan' ? 'pin-amber' : 'pin-blue');
               ?>
               <button type="button"
                       class="jakarta-map-pin <?= $pinColor ?><?= $idx === 0 ? ' active' : '' ?>"
                       style="left: <?= (int)$p['map_x'] ?>%; top: <?= (int)$p['map_y'] ?>%;"
                       data-pin-id="<?= e($p['id']) ?>"
-                      data-title="<?= e(mb_strtolower($p['title'] . ' ' . $p['location'] . ' ' . $p['kelurahan'] . ' ' . $p['agency'])) ?>"
-                      data-wilayah="<?= e($p['wilayah']) ?>"
-                      data-category="<?= e($p['category']) ?>"
-                      data-status="<?= e($p['status']) ?>"
-                      title="<?= e($p['title']) ?>">
+                      data-title="<?= e(mb_strtolower($p['judul'] . ' ' . $p['location'] . ' ' . ($p['lokasi_kelurahan'] ?? '') . ' ' . $p['agency'])) ?>"
+                      data-wilayah="<?= e($p['lokasi_kota'] ?? '') ?>"
+                      data-category="<?= e($p['kategori'] ?? '') ?>"
+                      data-status="<?= e($stKey) ?>"
+                      title="<?= e($p['judul']) ?>">
                 <span class="pin-badge"><?= (int)$p['progress'] ?>%</span>
-                <span class="pin-label"><?= e($p['title']) ?></span>
+                <span class="pin-label"><?= e($p['judul']) ?></span>
               </button>
             <?php endforeach; ?>
           </div>
@@ -161,14 +173,17 @@
       <aside class="card map-inspector-card" id="mapInspector">
         <span class="eyebrow">TITIK PROYEK TERPILIH</span>
         <?php foreach ($projects as $idx => $p): ?>
-          <?php $pillTone = $p['status'] === 'done' ? 'green' : ($p['status'] === 'planned' ? 'amber' : 'blue'); ?>
+          <?php
+            $stKey    = $p['status_proyek'];
+            $pillTone = $stKey === 'selesai' ? 'green' : ($stKey === 'direncanakan' ? 'amber' : 'blue');
+          ?>
           <div class="map-inspector-item<?= $idx === 0 ? '' : ' hidden' ?>" data-inspector-id="<?= e($p['id']) ?>">
             <div class="inspector-banner tone-<?= (int)$p['tone'] ?>">
-              <span class="pill pill-<?= $pillTone ?>"><?= e($statusLabels[$p['status']] ?? '') ?></span>
+              <span class="pill pill-<?= $pillTone ?>"><?= e($statusLabels[$stKey] ?? $stKey) ?></span>
             </div>
-            <h3><?= e($p['title']) ?></h3>
+            <h3><?= e($p['judul']) ?></h3>
             <p class="small text-primary" style="font-weight: 600; margin: 6px 0 4px;">
-              <?= icon('pin', 14) ?> <?= e($p['location']) ?> (Kel. <?= e($p['kelurahan']) ?>)
+              <?= icon('pin', 14) ?> <?= e($p['location']) ?>
             </p>
             <p class="tiny muted" style="margin-bottom: 14px;"><?= e($p['agency']) ?> &middot; Koordinat: <?= e($p['coords']) ?></p>
 
@@ -181,15 +196,15 @@
             <div class="inspector-meta-grid">
               <div>
                 <span class="tiny muted">Anggaran</span>
-                <strong class="small"><?= e($p['budget']) ?></strong>
+                <strong class="small"><?= e($p['budget_formatted']) ?></strong>
               </div>
               <div>
                 <span class="tiny muted">Jadwal</span>
-                <strong class="small"><?= e($p['target']) ?></strong>
+                <strong class="small"><?= e($p['target_formatted']) ?></strong>
               </div>
             </div>
 
-            <p class="small muted" style="margin: 14px 0 18px;"><?= e($p['description']) ?></p>
+            <p class="small muted" style="margin: 14px 0 18px;"><?= e($p['deskripsi'] ?? '') ?></p>
 
             <a href="/proyek/<?= e($p['id']) ?>" class="btn-solid btn-block">
               Lihat Detail Lengkap Proyek <?= icon('arrow-right', 16) ?>
@@ -200,3 +215,109 @@
     </div>
   </div>
 </section>
+
+<?php if ($isAdmin): ?>
+<!-- Modal Tambah Proyek Kerangka (Admin -> PostgreSQL) -->
+<div class="modal-backdrop hidden" id="newProjectModal" role="dialog" aria-modal="true" aria-labelledby="modalProjectTitle">
+  <div class="modal-card card" style="max-width: 620px; max-height: 90vh; overflow-y: auto;">
+    <div class="modal-head">
+      <h3 id="modalProjectTitle">Tambah Kerangka Proyek Baru</h3>
+      <button type="button" class="icon-btn" id="closeNewProjectModal" aria-label="Tutup">&times;</button>
+    </div>
+    <form method="POST" action="/proyek/create" enctype="multipart/form-data" class="modal-form">
+      <input type="hidden" name="csrf_token" value="<?= e($csrfToken) ?>">
+
+      <div class="form-group">
+        <label for="prjJudul">Judul Proyek *</label>
+        <input type="text" id="prjJudul" name="judul" required placeholder="Contoh: Revitalisasi Trotoar Jl. Sudirman">
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div class="form-group">
+          <label for="prjKategori">Kategori</label>
+          <select id="prjKategori" name="kategori" class="form-select">
+            <option value="Infrastruktur">Infrastruktur</option>
+            <option value="Transportasi">Transportasi</option>
+            <option value="Lingkungan">Lingkungan</option>
+            <option value="Fasilitas Publik">Fasilitas Publik</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="prjKota">Wilayah Kota</label>
+          <select id="prjKota" name="lokasi_kota" class="form-select">
+            <option value="Jakarta Pusat">Jakarta Pusat</option>
+            <option value="Jakarta Selatan">Jakarta Selatan</option>
+            <option value="Jakarta Barat">Jakarta Barat</option>
+            <option value="Jakarta Timur">Jakarta Timur</option>
+            <option value="Jakarta Utara">Jakarta Utara</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div class="form-group">
+          <label for="prjKelurahan">Kelurahan / Kecamatan</label>
+          <input type="text" id="prjKelurahan" name="lokasi_kelurahan" placeholder="Contoh: Karet Kuningan">
+        </div>
+
+        <div class="form-group">
+          <label for="prjInstansi">Instansi Pelaksana</label>
+          <input type="text" id="prjInstansi" name="instansi_pelaksana" placeholder="Contoh: Dinas Bina Marga DKI Jakarta">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="prjPemilik">Tugaskan ke Akun Pemerintah (Opsional)</label>
+        <select id="prjPemilik" name="pemilik_pemerintah_id" class="form-select">
+          <option value="">-- Belum ditugaskan (Draft Admin) --</option>
+          <?php foreach ($pemerintahList as $pem): ?>
+            <option value="<?= e($pem['id']) ?>"><?= e($pem['instansi']) ?> (<?= e($pem['nama_lengkap']) ?>)</option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div class="form-group">
+          <label for="prjMulai">Tanggal Mulai</label>
+          <input type="date" id="prjMulai" name="tanggal_mulai">
+        </div>
+        <div class="form-group">
+          <label for="prjSelesai">Target Selesai</label>
+          <input type="date" id="prjSelesai" name="tanggal_target_selesai">
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div class="form-group">
+          <label for="prjStatus">Status Awal</label>
+          <select id="prjStatus" name="status_proyek" class="form-select">
+            <option value="direncanakan">Direncanakan</option>
+            <option value="dalam_pengerjaan">Dalam pengerjaan</option>
+            <option value="selesai">Selesai</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="prjProgres">Progres Awal (%)</label>
+          <input type="number" id="prjProgres" name="progres_persen" min="0" max="100" value="0">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="prjDeskripsi">Deskripsi Proyek</label>
+        <textarea id="prjDeskripsi" name="deskripsi" rows="3" placeholder="Jelaskan ringkasan ruang lingkup proyek..."></textarea>
+      </div>
+
+      <div class="form-group">
+        <label for="prjGambar">Foto / Ilustrasi Proyek (JPG/PNG/WEBP, maks 10MB)</label>
+        <input type="file" id="prjGambar" name="gambar" accept="image/jpeg,image/png,image/webp">
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn-outline" id="cancelNewProjectModal">Batal</button>
+        <button type="submit" class="btn-solid">Simpan Proyek</button>
+      </div>
+    </form>
+  </div>
+</div>
+<?php endif; ?>
