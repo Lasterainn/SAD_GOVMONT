@@ -52,7 +52,7 @@ Aplikasi ini dibangun dengan pendekatan *security-by-design* yang mengacu pada s
 - **Database:** PostgreSQL 15+
 - **Frontend:** HTML5, Vanilla CSS, Vanilla JavaScript
 - **Web Server / Reverse Proxy (Lokal):** PHP Built-in Server + Caddy (HTTPS lokal)
-- **CI/CD Security:** GitHub Actions (Gitleaks, Semgrep, CodeQL, Trivy, PostgreSQL Schema Check)
+- **CI/CD Security:** GitHub Actions (Gitleaks, Semgrep, PostgreSQL Schema Check)
 
 ---
 
