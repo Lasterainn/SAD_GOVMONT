@@ -1,0 +1,139 @@
+name: Security & Code Quality Checks
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  schedule:
+    - cron: '0 2 * * 1' # Pemindaian rutin setiap Senin pukul 02:00 UTC
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  # 1. Deteksi kebocoran secret (.env, APP_KEY, NIK_PEPPER, OTP_PEPPER, password SMTP/DB)
+  secret-scan:
+    name: Secret Scanning (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks CLI
+        run: |
+          GITLEAKS_VER="8.21.2"
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VER}/gitleaks_${GITLEAKS_VER}_linux_x64.tar.gz" -o gitleaks.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks detect --source . --verbose --redact
+
+  # 2. Validasi sintaks PHP 8.2 & Static Application Security Testing (Semgrep)
+  php-sast:
+    name: PHP Lint & SAST (Semgrep)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.2
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_pgsql, openssl, curl, mbstring, fileinfo
+          coverage: none
+
+      - name: PHP Syntax Check (All Directories)
+        run: |
+          find public src templates config script -type f -name "*.php" -print0 | xargs -0 -n1 php -l
+
+      - name: Run Semgrep SAST (PHP & OWASP Top 10)
+        run: |
+          python3 -m pip install --quiet semgrep
+          semgrep scan \
+            --config p/php \
+            --config p/owasp-top-ten \
+            --config p/security-audit \
+            --sarif \
+            --output semgrep.sarif \
+            --error
+
+      - name: Upload Semgrep SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep-php
+
+  # 3. Analisis keamanan JavaScript (public/js/app.js) dengan CodeQL
+  js-codeql:
+    name: JavaScript Analysis (CodeQL)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: codeql-js
+
+  # 4. Uji integritas skema PostgreSQL & hak akses role (database/jakarta_connect.sql)
+  postgres-schema-check:
+    name: PostgreSQL Schema & Role Verification
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_postgres_password
+          POSTGRES_DB: jakarta_connect
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Execute jakarta_connect.sql
+        env:
+          PGPASSWORD: ci_postgres_password
+        run: |
+          psql -h 127.0.0.1 -U postgres -d jakarta_connect -v ON_ERROR_STOP=1 -f database/jakarta_connect.sql
+
+  # 5. Pemindaian miskonfigurasi & SBOM (Trivy)
+  trivy-scan:
+    name: Filesystem & Misconfig Scan (Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Trivy Vulnerability & Misconfig Scanner
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,misconfig,secret
+          format: sarif
+          output: trivy-results.sarif
+          severity: HIGH,CRITICAL
+
+      - name: Upload Trivy SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-fs
