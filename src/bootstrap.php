@@ -1,6 +1,14 @@
 <?php
 error_reporting(E_ALL & ~E_DEPRECATED);
 
+if (file_exists(__DIR__ . '/../vendor/autoload.php')) {
+    require_once __DIR__ . '/../vendor/autoload.php';
+}
+
+if (file_exists(__DIR__ . '/../vendor/autoload.php')) {
+    require_once __DIR__ . '/../vendor/autoload.php';
+}
+
 // 1. Autoloader PSR-4 (dengan fallback case-insensitive untuk Linux)
 spl_autoload_register(function ($class) {
     $prefix = 'App\\';
