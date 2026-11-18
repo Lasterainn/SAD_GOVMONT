@@ -387,5 +387,5 @@ GRANT SELECT, INSERT, UPDATE ON tbl_warga, tbl_pemerintah, tbl_admin, tbl_proyek
 -- Tidak ada DELETE: penghapusan forum = soft delete pada tbl_chat; akun dinonaktifkan lewat kolom status.
 GRANT SELECT, INSERT ON tbl_log_login, tbl_log_forum, tbl_log_proyek TO app_jc;  -- append-only
 GRANT SELECT ON v_dashboard_proyek, v_dashboard_admin, v_chat_tampil TO app_jc;
-
+GRANT DELETE ON tbl_proyek TO app_jc;
 COMMIT;

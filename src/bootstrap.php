@@ -19,20 +19,27 @@ spl_autoload_register(function ($class) {
     }
 });
 
-// 2. Muat .env
-\App\Env::load(__DIR__ . '/../.env');
+// 2. Helper functions global untuk template & partials
+require_once __DIR__ . '/helpers.php';
+
+// 3. Muat .env (fallback ke .env.example saat mode flat/dev bila .env belum dibuat)
+$envPath = __DIR__ . '/../.env';
+if (!is_readable($envPath) && is_readable(__DIR__ . '/../.env.example')) {
+    $envPath = __DIR__ . '/../.env.example';
+}
+\App\Env::load($envPath);
 ini_set('display_errors', getenv('APP_DEBUG') === '1' ? '1' : '0');
 
-// 3. HTTP Security Headers
+// 4. HTTP Security Headers
 header("X-Frame-Options: DENY");
 header("X-Content-Type-Options: nosniff");
 header("X-XSS-Protection: 0");
 header("Referrer-Policy: strict-origin-when-cross-origin");
 header("Content-Type: text/html; charset=UTF-8");
 header("Permissions-Policy: geolocation=(), camera=(), microphone=()");
-header("Content-Security-Policy: default-src 'self'; script-src 'self' https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/; style-src 'self' 'unsafe-inline'; img-src 'self'; form-action 'self'; frame-ancestors 'self'; frame-src 'self' https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/; connect-src 'self' https://www.google.com/recaptcha/;");
+header("Content-Security-Policy: default-src 'self'; script-src 'self' https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/; style-src 'self' 'unsafe-inline'; img-src 'self' data:; form-action 'self'; frame-ancestors 'self'; frame-src 'self' https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/; connect-src 'self' https://www.google.com/recaptcha/;");
 
-// 4. Security Cookie Sesi
+// 5. Security Cookie Sesi
 ini_set('session.cookie_httponly', '1');
 ini_set('session.cookie_samesite', 'Lax');
 ini_set('session.use_only_cookies', '1');
@@ -44,9 +51,8 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// 5. Session Timeout (30 Menit)
-$config = require __DIR__ . '/../config/config.php';
-$timeout = $config['app']['session_lifetime'];
+// 6. Session Timeout (30 Menit)
+$timeout = (int)(getenv('SESSION_LIFETIME') ?: 1800);
 
 if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > $timeout)) {
     session_unset();

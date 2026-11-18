@@ -7,16 +7,20 @@ use App\Csrf;
 use App\Validator;
 
 class AuthController {
-    private Auth $auth;
+    private ?Auth $auth = null;
 
-    public function __construct() {
-        $this->auth = new Auth();
+    private function auth(): Auth {
+        if ($this->auth === null) {
+            $this->auth = new Auth();
+        }
+        return $this->auth;
     }
 
     public function showLogin(?string $error = null, ?string $success = null): void {
         $csrfToken = Csrf::generateToken();
         $recaptchaSiteKey = Recaptcha::siteKey();
         $title = "Login - JakartaConnect";
+        $layoutMode = 'auth';
         $viewFile = __DIR__ . '/../../templates/login.php';
         require __DIR__ . '/../../templates/layout.php';
     }
@@ -24,8 +28,8 @@ class AuthController {
     public function showRegister(?array $errors = null, ?string $success = null, array $old = []): void {
         $csrfToken = Csrf::generateToken();
         $recaptchaSiteKey = Recaptcha::siteKey();
-
         $title = "Register Warga - JakartaConnect";
+        $layoutMode = 'auth';
         $viewFile = __DIR__ . '/../../templates/register.php';
         require __DIR__ . '/../../templates/layout.php';
     }
@@ -53,11 +57,9 @@ class AuthController {
         if (!Validator::validateEmail($email)) $errors[] = "Format email tidak valid.";
         if (!Validator::validateNIK($nik)) $errors[] = "NIK harus 16 digit angka.";
 
-        // Validasi Kebijakan Password
         $pwdErrors = Validator::validatePassword($password);
         $errors = array_merge($errors, $pwdErrors);
 
-        // Validasi Konfirmasi Password
         if ($password !== $confirmPassword) {
             $errors[] = "Konfirmasi password tidak cocok dengan password yang dimasukkan.";
         }
@@ -67,7 +69,7 @@ class AuthController {
             return;
         }
 
-        $result = $this->auth->registerWarga($nama, $email, $nik, $password);
+        $result = $this->auth()->registerWarga($nama, $email, $nik, $password);
 
         if ($result['success']) {
             $this->showLogin(null, $result['message']);
@@ -90,27 +92,22 @@ class AuthController {
             return;
         }
 
-        // reCAPTCHA
         $recaptchaResponse = $_POST['g-recaptcha-response'] ?? '';
         if (!Recaptcha::verify($recaptchaResponse, $_SERVER['REMOTE_ADDR'] ?? null)) {
-            $this->auth->logCaptchaFailure($email);
+            $this->auth()->logCaptchaFailure($email);
             $this->showLogin('Verifikasi reCAPTCHA gagal. Silakan centang "I\'m not a robot".');
             return;
         }
 
-        $result = $this->auth->login($email, $password);
+        $result = $this->auth()->login($email, $password);
 
         if ($result['success']) {
-            // Admin & pemerintah -> tahap OTP, warga -> langsung dashboard
             header('Location: ' . (!empty($result['mfa_required']) ? '/mfa' : '/dashboard'));
             exit;
         }
         $this->showLogin($result['message']);
     }
 
-    // ---------------------------------------------------------------
-    // MFA (OTP)
-    // ---------------------------------------------------------------
     private function renderMfa(?string $error = null, ?string $success = null): void {
         $pending = $_SESSION['mfa_pending'] ?? null;
         if (!$pending) {
@@ -119,9 +116,10 @@ class AuthController {
         }
 
         $csrfToken   = Csrf::generateToken();
-        $maskedEmail = $this->auth->maskEmail($pending['email']);
+        $maskedEmail = $this->auth()->maskEmail($pending['email']);
         $roleLabel   = $pending['role'] === 'admin' ? 'Admin' : 'Pemerintah';
         $title       = "Verifikasi OTP - JakartaConnect";
+        $layoutMode  = 'auth';
         $viewFile    = __DIR__ . '/../../templates/mfa.php';
         require __DIR__ . '/../../templates/layout.php';
     }
@@ -136,7 +134,7 @@ class AuthController {
             return;
         }
 
-        $result = $this->auth->verifyMfa((string)($_POST['otp'] ?? ''));
+        $result = $this->auth()->verifyMfa((string)($_POST['otp'] ?? ''));
 
         if ($result['success']) {
             header('Location: /dashboard');
@@ -155,7 +153,7 @@ class AuthController {
             return;
         }
 
-        $result = $this->auth->resendMfa();
+        $result = $this->auth()->resendMfa();
 
         if (!empty($result['restart'])) {
             $this->showLogin($result['message']);
@@ -168,27 +166,15 @@ class AuthController {
 
     public function cancelMfa(): void {
         if (Csrf::verifyToken($_POST['csrf_token'] ?? '')) {
-            $this->auth->cancelMfa();
+            $this->auth()->cancelMfa();
         }
         header('Location: /login');
         exit;
     }
 
-    public function dashboard(): void {
-        // logged_in baru true setelah OTP benar (admin/pemerintah)
-        if (empty($_SESSION['logged_in'])) {
-            header('Location: /login');
-            exit;
-        }
-
-        $title = "Dashboard - JakartaConnect";
-        $viewFile = __DIR__ . '/../../templates/dashboard.php';
-        require __DIR__ . '/../../templates/layout.php';
-    }
-
     public function logout(): void {
-        $this->auth->logout();
-        header('Location: /login');
+        $this->auth()->logout();
+        header('Location: /');
         exit;
     }
 }
