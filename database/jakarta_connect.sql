@@ -1,7 +1,4 @@
--- =====================================================================
--- Jakarta Connect - Skema Database PostgreSQL
 -- Minimal PostgreSQL 13 (gen_random_uuid() bawaan)
--- =====================================================================
 
 BEGIN;
 
@@ -227,9 +224,15 @@ CREATE TRIGGER trg_chat_updated BEFORE UPDATE ON tbl_chat
 -- 6-8. Tabel LOG (append-only, tidak bisa diubah/dihapus)
 --      Dilengkapi hash chain (prev_hash -> row_hash) agar manipulasi
 --      terdeteksi (mitigasi Repudiation & Tampering).
---      Tidak memakai FK ke tabel user/proyek agar log tetap utuh
---      walaupun data sumber berubah, dan agar percobaan login dengan
---      email yang tidak dikenal tetap tercatat.
+--
+--      Relasi (FOREIGN KEY, ON DELETE RESTRICT):
+--      Kode aplikasi menulis SATU kolom aktor (user_id / aktor_id) + role.
+--      Karena aktor bisa berasal dari 3 tabel berbeda, kolom FK per tabel
+--      dibuat sebagai GENERATED ... STORED dari (aktor_id, role). Dengan begitu
+--      query INSERT di aplikasi tidak perlu diubah, tetapi integritas
+--      referensial tetap dijaga database.
+--      RESTRICT dipakai (bukan SET NULL/CASCADE) karena UPDATE/DELETE pada
+--      tabel log dilarang trigger log_immutable.
 -- ---------------------------------------------------------------------
 CREATE TABLE tbl_log_login (
     id              uuid         PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -244,7 +247,18 @@ CREATE TABLE tbl_log_login (
     prev_hash       bytea,
     row_hash        bytea,
     created_at      timestamptz  NOT NULL DEFAULT now(),
-    CONSTRAINT chk_log_login_tahap CHECK (tahap IN ('password','otp','logout'))
+
+    -- FK turunan (otomatis terisi sesuai role)
+    warga_id        uuid GENERATED ALWAYS AS (CASE WHEN role = 'warga'      THEN user_id END) STORED
+                        REFERENCES tbl_warga(id)      ON DELETE RESTRICT,
+    pemerintah_id   uuid GENERATED ALWAYS AS (CASE WHEN role = 'pemerintah' THEN user_id END) STORED
+                        REFERENCES tbl_pemerintah(id) ON DELETE RESTRICT,
+    admin_id        uuid GENERATED ALWAYS AS (CASE WHEN role = 'admin'      THEN user_id END) STORED
+                        REFERENCES tbl_admin(id)      ON DELETE RESTRICT,
+
+    CONSTRAINT chk_log_login_tahap CHECK (tahap IN ('password','otp','logout')),
+    -- user_id dan role harus sama-sama terisi (akun dikenal) atau sama-sama NULL (email tidak dikenal)
+    CONSTRAINT chk_log_login_aktor CHECK ((user_id IS NULL) = (role IS NULL))
 );
 CREATE INDEX idx_log_login_user  ON tbl_log_login (user_id, created_at DESC);
 CREATE INDEX idx_log_login_ip    ON tbl_log_login (ip_address, created_at DESC);
@@ -252,8 +266,8 @@ CREATE INDEX idx_log_login_waktu ON tbl_log_login (created_at DESC);
 
 CREATE TABLE tbl_log_forum (
     id           uuid         PRIMARY KEY DEFAULT gen_random_uuid(),
-    forum_id     uuid         NOT NULL,
-    chat_id      uuid,                           -- NULL untuk aksi level forum
+    forum_id     uuid         NOT NULL REFERENCES tbl_forum(id) ON DELETE RESTRICT,
+    chat_id      uuid         REFERENCES tbl_chat(id)           ON DELETE RESTRICT,  -- NULL untuk aksi level forum
     aktor_id     uuid         NOT NULL,
     aktor_role   role_user    NOT NULL,
     aksi         varchar(20)  NOT NULL,          -- buat_forum | buat_chat | hapus_chat
@@ -263,7 +277,16 @@ CREATE TABLE tbl_log_forum (
     prev_hash    bytea,
     row_hash     bytea,
     created_at   timestamptz  NOT NULL DEFAULT now(),
-    CONSTRAINT chk_log_forum_aksi CHECK (aksi IN ('buat_forum','buat_chat','hapus_chat'))
+
+    -- FK turunan: di forum hanya warga (buat) dan admin (moderasi) yang bisa jadi aktor
+    warga_id     uuid GENERATED ALWAYS AS (CASE WHEN aktor_role = 'warga' THEN aktor_id END) STORED
+                     REFERENCES tbl_warga(id) ON DELETE RESTRICT,
+    admin_id     uuid GENERATED ALWAYS AS (CASE WHEN aktor_role = 'admin' THEN aktor_id END) STORED
+                     REFERENCES tbl_admin(id) ON DELETE RESTRICT,
+
+    CONSTRAINT chk_log_forum_aksi  CHECK (aksi IN ('buat_forum','buat_chat','hapus_chat')),
+    CONSTRAINT chk_log_forum_aktor CHECK (aktor_role IN ('warga','admin')),
+    CONSTRAINT chk_log_forum_chat  CHECK (aksi = 'buat_forum' OR chat_id IS NOT NULL)
 );
 CREATE INDEX idx_log_forum_forum ON tbl_log_forum (forum_id, created_at DESC);
 CREATE INDEX idx_log_forum_chat  ON tbl_log_forum (chat_id);
@@ -271,6 +294,10 @@ CREATE INDEX idx_log_forum_aktor ON tbl_log_forum (aktor_id, created_at DESC);
 
 CREATE TABLE tbl_log_proyek (
     id          uuid         PRIMARY KEY DEFAULT gen_random_uuid(),
+    -- Sengaja TANPA FK: aplikasi menghapus proyek secara permanen (DELETE) lalu
+    -- mencatat aksi 'hapus'. Baris log harus tetap ada setelah proyek hilang,
+    -- dan data_lama menyimpan snapshot proyek. FK ke tbl_proyek akan memblokir
+    -- penghapusan (RESTRICT) atau melanggar integritas log 'hapus'.
     proyek_id   uuid         NOT NULL,
     aktor_id    uuid         NOT NULL,
     aktor_role  role_user    NOT NULL,
@@ -281,7 +308,15 @@ CREATE TABLE tbl_log_proyek (
     prev_hash   bytea,
     row_hash    bytea,
     created_at  timestamptz  NOT NULL DEFAULT now(),
-    CONSTRAINT chk_log_proyek_aksi CHECK (aksi IN ('buat','ubah','konfirmasi','hapus'))
+
+    -- FK turunan: admin (buat/ubah/hapus) atau pemerintah (ubah/konfirmasi)
+    admin_id       uuid GENERATED ALWAYS AS (CASE WHEN aktor_role = 'admin'      THEN aktor_id END) STORED
+                       REFERENCES tbl_admin(id)      ON DELETE RESTRICT,
+    pemerintah_id  uuid GENERATED ALWAYS AS (CASE WHEN aktor_role = 'pemerintah' THEN aktor_id END) STORED
+                       REFERENCES tbl_pemerintah(id) ON DELETE RESTRICT,
+
+    CONSTRAINT chk_log_proyek_aksi  CHECK (aksi IN ('buat','ubah','konfirmasi','hapus')),
+    CONSTRAINT chk_log_proyek_aktor CHECK (aktor_role IN ('admin','pemerintah'))
 );
 CREATE INDEX idx_log_proyek_proyek ON tbl_log_proyek (proyek_id, created_at DESC);
 CREATE INDEX idx_log_proyek_aktor  ON tbl_log_proyek (aktor_id, created_at DESC);
@@ -387,5 +422,8 @@ GRANT SELECT, INSERT, UPDATE ON tbl_warga, tbl_pemerintah, tbl_admin, tbl_proyek
 -- Tidak ada DELETE: penghapusan forum = soft delete pada tbl_chat; akun dinonaktifkan lewat kolom status.
 GRANT SELECT, INSERT ON tbl_log_login, tbl_log_forum, tbl_log_proyek TO app_jc;  -- append-only
 GRANT SELECT ON v_dashboard_proyek, v_dashboard_admin, v_chat_tampil TO app_jc;
+-- Dashboard admin (User.php) membaca view verifikasi hash chain -> wajib diberi SELECT
+GRANT SELECT ON v_verifikasi_log_login, v_verifikasi_log_forum, v_verifikasi_log_proyek TO app_jc;
+-- proyekModel::deleteByAdmin() memakai DELETE permanen (aksi 'hapus' dicatat di tbl_log_proyek)
 GRANT DELETE ON tbl_proyek TO app_jc;
 COMMIT;
