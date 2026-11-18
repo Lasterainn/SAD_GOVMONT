@@ -5,6 +5,7 @@ use App\Recaptcha;
 use App\Auth;
 use App\Csrf;
 use App\Validator;
+use App\LoginThrottle;
 
 class AuthController {
     private ?Auth $auth = null;
@@ -17,6 +18,14 @@ class AuthController {
     }
 
     public function showLogin(?string $error = null, ?string $success = null): void {
+        if ($error === null && !empty($_SESSION['flash_auth_expired'])) {
+            $error = (string)$_SESSION['flash_auth_expired'];
+            unset($_SESSION['flash_auth_expired']);
+        }
+
+        $ip = LoginThrottle::clientIp();
+        $showCaptcha = LoginThrottle::requiresCaptcha($ip);
+
         $csrfToken = Csrf::generateToken();
         $recaptchaSiteKey = Recaptcha::siteKey();
         $title = "Login - JakartaConnect";
@@ -49,7 +58,7 @@ class AuthController {
         $errors = [];
 
         $recaptchaResponse = $_POST['g-recaptcha-response'] ?? '';
-        if (!Recaptcha::verify($recaptchaResponse, $_SERVER['REMOTE_ADDR'] ?? null)) {
+        if (!Recaptcha::verify($recaptchaResponse, LoginThrottle::clientIp())) {
             $errors[] = "Verifikasi reCAPTCHA gagal. Silakan centang \"I'm not a robot\".";
         }
 
@@ -84,6 +93,15 @@ class AuthController {
             return;
         }
 
+        $ip = LoginThrottle::clientIp();
+
+        // 1. Cek batas IP throttle (maks 10 gagal / 15 menit)
+        if (LoginThrottle::isBlocked($ip)) {
+            http_response_code(429);
+            $this->showLogin('Terlalu banyak percobaan masuk dari alamat IP Anda. Silakan coba lagi dalam beberapa menit.');
+            return;
+        }
+
         $email = trim($_POST['email'] ?? '');
         $password = $_POST['password'] ?? '';
 
@@ -92,19 +110,29 @@ class AuthController {
             return;
         }
 
-        $recaptchaResponse = $_POST['g-recaptcha-response'] ?? '';
-        if (!Recaptcha::verify($recaptchaResponse, $_SERVER['REMOTE_ADDR'] ?? null)) {
-            $this->auth()->logCaptchaFailure($email);
-            $this->showLogin('Verifikasi reCAPTCHA gagal. Silakan centang "I\'m not a robot".');
-            return;
+        // 2. Terapkan progressive delay jika IP sudah memiliki riwayat gagal berulang
+        LoginThrottle::applyProgressiveDelay($ip);
+
+        // 3. Wajibkan reCAPTCHA hanya setelah kegagalan berulang
+        if (LoginThrottle::requiresCaptcha($ip)) {
+            $recaptchaResponse = $_POST['g-recaptcha-response'] ?? '';
+            if (!Recaptcha::verify($recaptchaResponse, $ip)) {
+                LoginThrottle::recordFailure($ip);
+                $this->auth()->logCaptchaFailure($email);
+                $this->showLogin('Verifikasi CAPTCHA gagal. Silakan centang "I\'m not a robot" dan coba lagi.');
+                return;
+            }
         }
 
         $result = $this->auth()->login($email, $password);
 
         if ($result['success']) {
+            LoginThrottle::clear($ip);
             header('Location: ' . (!empty($result['mfa_required']) ? '/mfa' : '/dashboard'));
             exit;
         }
+
+        LoginThrottle::recordFailure($ip);
         $this->showLogin($result['message']);
     }
 

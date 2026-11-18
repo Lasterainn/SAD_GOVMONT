@@ -1,0 +1,127 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "serialNumber": "urn:uuid:3e671687-395b-41f5-a30f-a58921a69b79",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-11-17T10:59:00Z",
+    "component": {
+      "bom-ref": "jakartaconnect-app",
+      "type": "application",
+      "name": "JakartaConnect",
+      "version": "1.0.0",
+      "description": "Portal Pelayanan & Aspirasi Warga berbasis PHP Native tanpa dependensi library pihak ketiga"
+    }
+  },
+  "components": [
+    {
+      "bom-ref": "runtime-php",
+      "type": "platform",
+      "name": "PHP",
+      "version": "8.2.0",
+      "purl": "pkg:generic/php@8.2.0",
+      "description": "Runtime utama aplikasi backend"
+    },
+    {
+      "bom-ref": "ext-pdo-pgsql",
+      "type": "library",
+      "name": "php-pdo_pgsql",
+      "version": "8.2.0",
+      "description": "Ekstensi PDO driver untuk koneksi database PostgreSQL"
+    },
+    {
+      "bom-ref": "ext-openssl",
+      "type": "library",
+      "name": "php-openssl",
+      "version": "8.2.0",
+      "description": "Ekstensi kriptografi untuk enkripsi AES-256-GCM dan koneksi TLS"
+    },
+    {
+      "bom-ref": "ext-curl",
+      "type": "library",
+      "name": "php-curl",
+      "version": "8.2.0",
+      "description": "Ekstensi HTTP client untuk verifikasi Google reCAPTCHA"
+    },
+    {
+      "bom-ref": "ext-mbstring",
+      "type": "library",
+      "name": "php-mbstring",
+      "version": "8.2.0",
+      "description": "Ekstensi manipulasi string multibyte UTF-8"
+    },
+    {
+      "bom-ref": "db-postgresql",
+      "type": "application",
+      "name": "PostgreSQL",
+      "version": "15.0",
+      "purl": "pkg:generic/postgresql@15.0",
+      "description": "Database relasional utama (skema jakarta_connect)"
+    },
+    {
+      "bom-ref": "webserver-nginx",
+      "type": "application",
+      "name": "Nginx",
+      "version": "1.24.0",
+      "purl": "pkg:generic/nginx@1.24.0",
+      "description": "Web server / reverse proxy (opsional Caddy atau Apache)"
+    }
+  ],
+  "services": [
+    {
+      "bom-ref": "service-google-recaptcha",
+      "name": "Google reCAPTCHA v2 API",
+      "provider": {
+        "name": "Google LLC",
+        "url": [
+          "https://www.google.com/recaptcha"
+        ]
+      },
+      "description": "Layanan verifikasi anti-bot pada halaman login dan registrasi warga (src/recaptcha.php)",
+      "endpoints": [
+        "https://www.google.com/recaptcha/api/siteverify",
+        "https://www.google.com/recaptcha/api.js"
+      ],
+      "authenticated": true,
+      "x-trust-boundary": true,
+      "data": [
+        {
+          "flow": "outbound",
+          "classification": "Token respons CAPTCHA dan alamat IP klien"
+        }
+      ]
+    },
+    {
+      "bom-ref": "service-smtp-mailer",
+      "name": "SMTP Mail Server (Gmail SMTP)",
+      "description": "Layanan pengiriman kode OTP MFA untuk akun Admin dan Pemerintah (src/Mailer.php, aktif saat MAIL_DRIVER=smtp)",
+      "endpoints": [
+        "smtp://smtp.gmail.com:587"
+      ],
+      "authenticated": true,
+      "x-trust-boundary": true,
+      "data": [
+        {
+          "flow": "outbound",
+          "classification": "Alamat email tujuan dan kode OTP sementara"
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "jakartaconnect-app",
+      "dependsOn": [
+        "runtime-php",
+        "ext-pdo-pgsql",
+        "ext-openssl",
+        "ext-curl",
+        "ext-mbstring",
+        "db-postgresql",
+        "webserver-nginx",
+        "service-google-recaptcha",
+        "service-smtp-mailer"
+      ]
+    }
+  ]
+}

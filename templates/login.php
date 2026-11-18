@@ -37,10 +37,12 @@ $csrfToken = $csrfToken ?? Csrf::generateToken();
             </label>
         </div>
 
-        <div class="form-group" style="margin-top: 14px;">
-            <div class="g-recaptcha" data-sitekey="<?= htmlspecialchars($recaptchaSiteKey ?? '', ENT_QUOTES, 'UTF-8') ?>"></div>
-        </div>
-        <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+        <?php if (!empty($showCaptcha)): ?>
+            <div class="form-group" style="margin-top: 14px;">
+                <div class="g-recaptcha" data-sitekey="<?= htmlspecialchars($recaptchaSiteKey ?? '', ENT_QUOTES, 'UTF-8') ?>"></div>
+            </div>
+            <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+        <?php endif; ?>
 
         <button type="submit" class="btn btn-primary" style="margin-top: 14px;">Masuk</button>
     </form>

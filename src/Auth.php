@@ -4,11 +4,16 @@ namespace App;
 use App\Models\User;
 
 class Auth {
+    // Hash Argon2id valid agar waktu komputasi saat email tidak ditemukan sama dengan akun asli
+    private const DUMMY_PASSWORD_HASH = '$argon2id$v=19$m=65536,t=4,p=1$c2FsdHNhbHRzYWx0c2FsdA$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaGhhc2g';
+    // Pesan gagal tunggal agar penyerang tidak tahu apakah email terdaftar / terkunci
+    private const GENERIC_LOGIN_ERROR = 'Email atau password salah.';
     private const MFA_ROLES            = ['admin', 'pemerintah'];
     private const OTP_TTL_DETIK        = 300;  // OTP berlaku 5 menit
     private const OTP_RESEND_COOLDOWN  = 60;   // jeda minimal kirim ulang (detik)
     private const OTP_MAX_RESEND       = 3;    // maks kirim ulang per sesi MFA
     private const MFA_SESSION_TTL      = 600;  // batas total tahap OTP sejak password benar (10 menit)
+    // Hash bcrypt cost-12 valid untuk menyamakan waktu komputasi saat email tidak ditemukan
 
     private User $userModel;
     private string $nikPepper;  // HMAC-SHA256 (nik_hash)
@@ -66,10 +71,12 @@ class Auth {
     // LOGIN TAHAP 1: email + password (+ reCAPTCHA di controller)
     // =================================================================
     public function login(string $email, string $password): array {
-        $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+        $ip = class_exists(LoginThrottle::class)
+            ? LoginThrottle::clientIp()
+            : ($_SERVER['REMOTE_ADDR'] ?? '127.0.0.1');
         $ua = $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown';
 
-        // Cari user di tbl_warga, tbl_pemerintah, atau tbl_admin
+        // 1. Cari user di tbl_warga, tbl_pemerintah, atau tbl_admin
         $role = 'warga';
         $table = 'tbl_warga';
         $user = $this->userModel->findWargaByEmail($email);
@@ -90,37 +97,41 @@ class Auth {
             }
         }
 
+        // 2. SELALU jalankan password_verify() lebih dulu (pakai dummy hash jika user tidak ada)
+        //    agar waktu respons identik dan tidak bisa dibedakan lewat timing attack.
+        $hashToVerify = $user['password_hash'] ?? self::DUMMY_PASSWORD_HASH;
+        $isPasswordValid = password_verify($password, $hashToVerify);
+
+        // 3. Jika user tidak ditemukan -> catat log, balas pesan seragam
         if (!$user) {
             $this->userModel->logLoginAttempt(null, null, $email, 'password', false, 'User tidak ditemukan', $ip, $ua);
-            return ['success' => false, 'message' => 'Email atau password salah.'];
+            return ['success' => false, 'message' => self::GENERIC_LOGIN_ERROR];
         }
 
-        // Cek penguncian. Hanya terkunci_sampai yang menentukan (status 'terkunci' dibiarkan
-        // sampai login sukses berikutnya me-reset-nya), akun 'nonaktif' selalu ditolak.
-        $lockedUntil = $user['terkunci_sampai'] ? strtotime($user['terkunci_sampai']) : null;
+        // 4. Cek penguncian & status nonaktif -> catat alasan asli di log Admin, tapi balas pesan seragam ke user
+        $lockedUntil = !empty($user['terkunci_sampai']) ? strtotime($user['terkunci_sampai']) : null;
         $lockMasihAktif = $lockedUntil !== null && $lockedUntil > time();
 
         if ($user['status'] === 'nonaktif' || $lockMasihAktif) {
-            $this->userModel->logLoginAttempt($user['id'], $role, $email, 'password', false, 'Akun terkunci', $ip, $ua);
-            return ['success' => false, 'message' => 'Akun Anda terkunci sementara karena 3 kali gagal login. Coba lagi dalam 15 menit.'];
+            $alasanLog = ($user['status'] === 'nonaktif') ? 'Akun nonaktif' : 'Akun terkunci';
+            $this->userModel->logLoginAttempt($user['id'], $role, $email, 'password', false, $alasanLog, $ip, $ua);
+            return ['success' => false, 'message' => self::GENERIC_LOGIN_ERROR];
         }
 
         // Jika masa kunci sudah lewat, hitung percobaan dari 0 lagi
         $attempts = ($lockedUntil !== null) ? 0 : (int)$user['jumlah_gagal_login'];
 
-        // Verifikasi Password Argon2id
-        if (!password_verify($password, $user['password_hash'])) {
+        // 5. Cek hasil verifikasi password -> tetap jalankan incrementFailedLogin di DB,
+        //    tapi JANGAN tampilkan sisa percobaan atau info penguncian ke layar user.
+        if (!$isPasswordValid) {
             $this->userModel->incrementFailedLogin($table, $user['id'], $attempts);
             $this->userModel->logLoginAttempt($user['id'], $role, $email, 'password', false, 'Password salah', $ip, $ua);
 
-            $remaining = 2 - $attempts;
-            if ($remaining > 0) {
-                return ['success' => false, 'message' => "Email atau password salah. Sisa percobaan: {$remaining}"];
-            }
-            return ['success' => false, 'message' => 'Akun terkunci selama 15 menit karena gagal 3 kali.'];
+            return ['success' => false, 'message' => self::GENERIC_LOGIN_ERROR];
         }
 
         // ---- Password benar ----
+        session_regenerate_id(true); // Cegah session fixation setelah kredensial valid
         $this->userModel->logLoginAttempt($user['id'], $role, $email, 'password', true, null, $ip, $ua);
 
         // Admin & Pemerintah: belum login penuh -> lanjut tahap OTP
