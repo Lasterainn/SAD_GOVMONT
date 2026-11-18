@@ -1,0 +1,15 @@
+title = "SAD_GovMon gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Public placeholder and test values"
+paths = [
+  '''\.env\.example$''',
+  '''src/recaptcha\.php$''',
+]
+regexes = [
+  '''6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI''',
+  '''6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe''',
+]
