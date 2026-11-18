@@ -107,7 +107,132 @@ jakartaconnect/
 
 ---
 
-## Panduan Instalasi & Menjalankan Aplikasi
+## Panduan Instalasi & Menjalankan di XAMPP
+
+### 1. Konfigurasi Ekstensi PHP & Driver PostgreSQL (`php.ini` & `httpd.conf`)
+
+1. Buka **XAMPP Control Panel** $\rightarrow$ klik **Config** pada baris **Apache** $\rightarrow$ pilih **PHP (`php.ini`)**.
+2. Aktifkan ekstensi berikut dengan menghapus tanda titik koma (`;`) di awal baris:
+   ```ini
+   extension=curl
+   extension=fileinfo
+   extension=mbstring
+   extension=openssl
+   extension=pdo_pgsql
+   extension=pgsql
+   ```
+3. Buka **Apache $\rightarrow$ Config $\rightarrow$ `httpd.conf`**, lalu tambahkan library driver PostgreSQL tepat **di atas** baris `LoadModule php_module`:
+   ```apache
+   LoadFile "C:/xampp/php/libpq.dll"
+   ```
+4. Pada file `httpd.conf` yang sama, pastikan modul *URL rewrite* dan *Virtual Host* sudah aktif (tidak diawali tanda `#`):
+   ```apache
+   LoadModule rewrite_module modules/mod_rewrite.so
+   Include conf/extra/httpd-vhosts.conf
+   ```
+
+### 2. Daftarkan Domain Lokal (`drivers\etc\hosts`)
+
+1. Jalankan editor teks (**Notepad** / **VS Code**) dengan **Run as administrator**.
+2. Buka `C:\Windows\System32\drivers\etc\hosts` dan tambahkan baris berikut di bagian paling bawah:
+   ```text
+   127.0.0.1    jakartaconnect.local
+   ```
+
+### 3. Konfigurasi Virtual Host (`httpd-vhosts.conf`)
+
+Arahkan `DocumentRoot` langsung ke folder `public/` agar *front controller* (`public/index.php`) dan aturan `public/.htaccess` berjalan dengan benar:
+
+1. Buka `C:\xampp\apache\conf\extra\httpd-vhosts.conf`.
+2. Tambahkan blok konfigurasi berikut (mendukung HTTP dan HTTPS lokal):
+   ```apache
+   <VirtualHost *:80>
+       ServerName jakartaconnect.local
+       DocumentRoot "C:/xampp/htdocs/jakartaconnect/public"
+
+       <Directory "C:/xampp/htdocs/jakartaconnect/public">
+           Options Indexes FollowSymLinks
+           AllowOverride All
+           Require all granted
+       </Directory>
+
+       ErrorLog "logs/jakartaconnect-error.log"
+       CustomLog "logs/jakartaconnect-access.log" common
+   </VirtualHost>
+
+   <VirtualHost *:443>
+       ServerName jakartaconnect.local
+       DocumentRoot "C:/xampp/htdocs/jakartaconnect/public"
+
+       SSLEngine on
+       SSLCertificateFile "conf/ssl.crt/server.crt"
+       SSLCertificateKeyFile "conf/ssl.key/server.key"
+
+       <Directory "C:/xampp/htdocs/jakartaconnect/public">
+           Options Indexes FollowSymLinks
+           AllowOverride All
+           Require all granted
+       </Directory>
+
+       ErrorLog "logs/jakartaconnect-ssl-error.log"
+       CustomLog "logs/jakartaconnect-ssl-access.log" common
+   </VirtualHost>
+   ```
+
+### 4. Inisialisasi Database PostgreSQL & Konfigurasi `.env`
+
+1. Buka **Command Prompt / PowerShell**, buat database serta role aplikasi `app_jc`, lalu impor skema SQL:
+   ```powershell
+   psql -U postgres -c "CREATE DATABASE jakarta_connect;"
+   psql -U postgres -c "CREATE ROLE app_jc LOGIN PASSWORD 'PasswordAppJc2026!';"
+   psql -U postgres -d jakarta_connect -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+   psql -U postgres -d jakarta_connect -f C:\xampp\htdocs\jakartaconnect\database\jakarta_connect.sql
+   psql -U postgres -d jakarta_connect -c "GRANT DELETE ON jakarta_connect.tbl_proyek TO app_jc;"
+   ```
+2. Salin `.env.example` menjadi `.env` di direktori utama proyek:
+   ```powershell
+   cd C:\xampp\htdocs\jakartaconnect
+   copy .env.example .env
+   ```
+3. Hasilkan **3 kunci kriptografi acak (64 karakter hex)** yang berbeda untuk `APP_KEY`, `NIK_PEPPER`, dan `OTP_PEPPER`:
+   ```powershell
+   C:\xampp\php\php.exe -r "echo bin2hex(random_bytes(32)) . PHP_EOL;"
+   C:\xampp\php\php.exe -r "echo bin2hex(random_bytes(32)) . PHP_EOL;"
+   C:\xampp\php\php.exe -r "echo bin2hex(random_bytes(32)) . PHP_EOL;"
+   ```
+4. Sesuaikan kredensial database dan kunci kriptografi pada file `.env`:
+   ```env
+   APP_ENV=local
+   APP_DEBUG=0
+   APP_URL=[http://jakartaconnect.local](http://jakartaconnect.local)
+
+   DB_HOST=127.0.0.1
+   DB_PORT=5432
+   DB_NAME=jakarta_connect
+   DB_SCHEMA=jakarta_connect
+   DB_USER=app_jc
+   DB_PASS=PasswordAppJc2026!
+
+   APP_KEY=<hasil_hex_1>
+   NIK_PEPPER=<hasil_hex_2>
+   OTP_PEPPER=<hasil_hex_3>
+
+   MAIL_DRIVER=log
+   RECAPTCHA_SITE_KEY=6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI
+   RECAPTCHA_SECRET_KEY=6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe
+   ```
+5. Jalankan *seeder* untuk mengisi data awal akun demo, proyek, dan diskusi:
+   ```powershell
+   C:\xampp\php\php.exe script\seedDatabase.php
+   ```
+
+### 5. Menjalankan & Mengakses Aplikasi
+
+1. Buka **XAMPP Control Panel**, klik **Stop** lalu **Start** ulang pada modul **Apache**.
+2. Akses aplikasi melalui browser di **`http://jakartaconnect.local`** (atau **`https://jakartaconnect.local`** untuk mode HTTPS).
+3. **Verifikasi OTP MFA (Admin & Pemerintah):** Saat `MAIL_DRIVER=log` aktif, kode OTP 6 digit tercatat di `C:\xampp\php\logs\php_error_log` atau `C:\xampp\apache\logs\jakartaconnect-error.log`.
+
+## Panduan Instalasi & Menjalankan Aplikasi di LINUX UBUNTU 24.04 LTS
 
 ### 1. Kloning Repositori & Konfigurasi `.env`
 ```bash
