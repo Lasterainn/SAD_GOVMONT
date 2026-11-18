@@ -1,5 +1,5 @@
 .env
-docs/reports
-public/uploads
+docs/reports/
+public/uploads/
 public/test.php
-project.zip
+vendor/
