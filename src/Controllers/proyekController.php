@@ -64,6 +64,18 @@ class ProyekController {
         ];
     }
 
+    private function deleteUploadedImage(?array $img): void {
+        if (empty($img['uuid']) || empty($img['ext'])) {
+            return;
+        }
+        $uuid = basename((string)$img['uuid']);
+        $ext  = basename((string)$img['ext']);
+        $path = __DIR__ . '/../../public/uploads/proyek/' . $uuid . '.' . $ext;
+        if (is_file($path)) {
+            @unlink($path);
+        }
+    }
+
     public function store(): void {
         if (($_SESSION['user_role'] ?? '') !== 'admin' || empty($_SESSION['logged_in'])) {
             flash('error', 'Hanya Admin yang berwenang menambahkan kerangka proyek.');
@@ -103,8 +115,9 @@ class ProyekController {
             header('Location: /proyek/' . $newId);
             exit;
         } catch (Throwable $e) {
+            $this->deleteUploadedImage($img);
             error_log('Create proyek error: ' . $e->getMessage());
-            flash('error', 'Gagal menyimpan proyek: ' . $e->getMessage());
+            flash('error', 'Terjadi kesalahan sistem saat menyimpan proyek.');
             header('Location: /proyek');
             exit;
         }
@@ -178,8 +191,9 @@ class ProyekController {
                 flash('success', 'Detail proyek & progres berhasil diperbarui dan dikonfirmasi.');
             }
         } catch (Throwable $e) {
+            $this->deleteUploadedImage($img);
             error_log('Update proyek error: ' . $e->getMessage());
-            flash('error', 'Gagal memperbarui proyek: ' . $e->getMessage());
+            flash('error', 'Terjadi kesalahan sistem saat memperbarui proyek.');
         }
 
         header('Location: /proyek/' . urlencode($id));
@@ -203,7 +217,7 @@ class ProyekController {
             flash('success', 'Proyek berhasil dihapus dari database.');
         } catch (Throwable $e) {
             error_log('Delete proyek error: ' . $e->getMessage());
-            flash('error', 'Gagal menghapus proyek: ' . $e->getMessage());
+            flash('error', 'Terjadi kesalahan sistem saat menghapus proyek.');
         }
 
         header('Location: /proyek');

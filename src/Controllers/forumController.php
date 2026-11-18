@@ -54,7 +54,7 @@ class ForumController {
             exit;
         } catch (Throwable $e) {
             error_log('Create forum error: ' . $e->getMessage());
-            flash('error', 'Gagal membuat diskusi: ' . $e->getMessage());
+            flash('error', 'Terjadi kesalahan sistem saat membuat topik diskusi.');
             header('Location: /diskusi');
             exit;
         }
@@ -128,7 +128,8 @@ class ForumController {
             );
             flash('success', 'Tanggapan Anda berhasil dikirim.');
         } catch (Throwable $e) {
-            flash('error', $e->getMessage());
+            error_log('Create chat error: ' . $e->getMessage());
+            flash('error', 'Terjadi kesalahan sistem saat mengirim tanggapan.');
         }
 
         header('Location: /diskusi/' . urlencode($id));
@@ -186,7 +187,8 @@ class ForumController {
             );
             flash($ok ? 'success' : 'error', $ok ? 'Pesan dimoderasi (soft-delete) dan tercatat di audit log.' : 'Pesan sudah dihapus sebelumnya.');
         } catch (Throwable $e) {
-            flash('error', 'Gagal memoderasi pesan: ' . $e->getMessage());
+            error_log('Moderate chat error: ' . $e->getMessage());
+            flash('error', 'Terjadi kesalahan sistem saat memoderasi pesan.');
         }
 
         header('Location: /diskusi/' . urlencode($forumId));
