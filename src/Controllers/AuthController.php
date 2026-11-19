@@ -83,6 +83,9 @@ class AuthController {
         if ($result['success']) {
             $this->showLogin(null, $result['message']);
         } else {
+            if (!empty($result['rate_limited'])) {
+                http_response_code(429);
+            }
             $this->showRegister([$result['message']], null, ['nama_lengkap' => $nama, 'email' => $email, 'nik' => $nik]);
         }
     }

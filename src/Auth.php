@@ -13,6 +13,7 @@ class Auth {
     private const OTP_RESEND_COOLDOWN  = 60;   // jeda minimal kirim ulang (detik)
     private const OTP_MAX_RESEND       = 3;    // maks kirim ulang per sesi MFA
     private const MFA_SESSION_TTL      = 600;  // batas total tahap OTP sejak password benar (10 menit)
+    private const MAX_REGISTRASI_PER_IP_JAM = 3;
     // Hash bcrypt cost-12 valid untuk menyamakan waktu komputasi saat email tidak ditemukan
 
     private User $userModel;
@@ -42,6 +43,18 @@ class Auth {
     }
 
     public function registerWarga(string $nama, string $email, string $nik, string $password): array {
+        $ip = class_exists(LoginThrottle::class)
+            ? LoginThrottle::clientIp()
+            : ($_SERVER['REMOTE_ADDR'] ?? '127.0.0.1');
+
+        if ($this->userModel->countRecentRegistrationsByIp($ip) >= self::MAX_REGISTRASI_PER_IP_JAM) {
+            return [
+                'success'      => false,
+                'rate_limited' => true,
+                'message'      => 'Batas registrasi dari alamat IP Anda telah tercapai. Silakan coba lagi dalam 1 jam.',
+            ];
+        }
+
         if ($this->userModel->findWargaByEmail($email)) {
             return ['success' => false, 'message' => 'Email sudah terdaftar.'];
         }
@@ -54,11 +67,11 @@ class Auth {
         $passwordHash = password_hash($password, PASSWORD_ARGON2ID, [
             'memory_cost' => 65536,
             'time_cost'   => 4,
-            'threads'     => 1
+            'threads'     => 1,
         ]);
 
         $nikEncryptedBin = $this->encryptNIK($nik);
-        $success = $this->userModel->createWarga($nama, $email, $nikEncryptedBin, $nikHashBin, $passwordHash);
+        $success = $this->userModel->createWarga($nama, $email, $nikEncryptedBin, $nikHashBin, $passwordHash, $ip);
 
         if ($success) {
             return ['success' => true, 'message' => 'Registrasi warga berhasil! Silakan login.'];

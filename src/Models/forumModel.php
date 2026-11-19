@@ -217,6 +217,16 @@ class ForumModel {
             throw new RuntimeException('Terlalu banyak tanggapan dalam 1 menit. Tunggu sebentar sebelum mengirim lagi.');
         }
 
+        $cooldownStmt = $this->db->prepare("
+            SELECT 1 FROM jakarta_connect.tbl_chat
+            WHERE warga_id = :warga_id AND created_at >= NOW() - INTERVAL '5 seconds'
+            LIMIT 1
+        ");
+        $cooldownStmt->execute(['warga_id' => $wargaId]);
+        if ($cooldownStmt->fetchColumn()) {
+            throw new RuntimeException('Tunggu minimal 5 detik sebelum mengirim tanggapan berikutnya.');
+        }
+
         $parentId = null;
         if ($replyToId && ProyekModel::isValidUuid($replyToId)) {
             $chk = $this->db->prepare("SELECT id FROM jakarta_connect.tbl_chat WHERE id = :cid AND forum_id = :fid");
@@ -342,5 +352,54 @@ class ForumModel {
             'snapshot' => $snapshot,
             'ip'       => $ip,
         ]);
+    }
+
+    public function cekBatasBuatDiskusi(string $wargaId, string $judul, string $deskripsi): ?string
+    {
+        // 1. Cek jeda waktu (cooldown 60 detik) & kuota per jam (maks 5 utas)
+        $stmtRate = $this->db->prepare("
+            SELECT
+                COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '60 seconds') AS dalam_60_detik,
+                COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '1 hour')     AS dalam_1_jam
+            FROM jakarta_connect.tbl_forum
+            WHERE warga_id = :warga_id
+        ");
+        $stmtRate->execute(['warga_id' => $wargaId]);
+        $rate = $stmtRate->fetch();
+
+        if ((int)($rate['dalam_60_detik'] ?? 0) > 0) {
+            return 'Tunggu minimal 60 detik sebelum membuat topik diskusi baru.';
+        }
+        if ((int)($rate['dalam_1_jam'] ?? 0) >= 5) {
+            return 'Anda telah mencapai batas maksimal 5 topik diskusi baru per jam.';
+        }
+
+        // 2. Cek duplikasi judul atau deskripsi dalam 10 menit terakhir
+        // Pastikan :warga_id, :judul, dan :deskripsi masing-masing hanya muncul 1 kali
+        $stmtDup = $this->db->prepare("
+            SELECT 1
+            FROM jakarta_connect.tbl_forum
+            WHERE warga_id = :warga_id
+              AND created_at > NOW() - INTERVAL '10 minutes'
+              AND (
+                  LOWER(BTRIM(judul)) = LOWER(BTRIM(:judul))
+                  OR (
+                      COALESCE(BTRIM(deskripsi), '') <> ''
+                      AND LOWER(BTRIM(deskripsi)) = LOWER(BTRIM(:deskripsi))
+                  )
+              )
+            LIMIT 1
+        ");
+        $stmtDup->execute([
+            'warga_id'  => $wargaId,
+            'judul'     => $judul,
+            'deskripsi' => $deskripsi,
+        ]);
+
+        if ($stmtDup->fetchColumn()) {
+            return 'Diskusi dengan judul atau isi yang sama baru saja Anda kirimkan.';
+        }
+
+        return null;
     }
 }

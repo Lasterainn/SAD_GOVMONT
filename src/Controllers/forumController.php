@@ -4,6 +4,7 @@ namespace App\Controllers;
 use App\Csrf;
 use App\Models\ForumModel;
 use Throwable;
+use RuntimeException;
 
 class ForumController {
     private ForumModel $model;
@@ -41,6 +42,18 @@ class ForumController {
         }
 
         try {
+            $pesanBatas = $this->model->cekBatasBuatDiskusi(
+                (string)$_SESSION['user_id'],
+                $judul,
+                $deskripsi
+            );
+            if ($pesanBatas !== null) {
+                http_response_code(429);
+                flash('error', $pesanBatas);
+                header('Location: /diskusi');
+                exit;
+            }
+
             $newId = $this->model->createForum(
                 (string)$_SESSION['user_id'],
                 $kategori,
@@ -127,7 +140,12 @@ class ForumController {
                 $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1'
             );
             flash('success', 'Tanggapan Anda berhasil dikirim.');
-        } catch (Throwable $e) {
+        }
+        catch (RuntimeException $e) {
+            http_response_code(429);
+            flash('error', $e->getMessage());
+        }
+        catch (Throwable $e) {
             error_log('Create chat error: ' . $e->getMessage());
             flash('error', 'Terjadi kesalahan sistem saat mengirim tanggapan.');
         }

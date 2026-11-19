@@ -40,18 +40,42 @@ class User {
         return $user ?: null;
     }
 
-    public function createWarga(string $namaLengkap, string $email, string $nikEncryptedBin, string $nikHashBin, string $passwordHash): bool {
+    public function createWarga(
+        string $namaLengkap,
+        string $email,
+        string $nikEncryptedBin,
+        string $nikHashBin,
+        string $passwordHash,
+        ?string $createdIp = null
+    ): bool {
+        $validIp = ($createdIp !== null && filter_var($createdIp, FILTER_VALIDATE_IP)) ? $createdIp : null;
+
         $stmt = $this->db->prepare("
-            INSERT INTO jakarta_connect.tbl_warga (nama_lengkap, email, nik_encrypted, nik_hash, password_hash)
-            VALUES (:nama_lengkap, :email, decode(:nik_encrypted, 'hex'), decode(:nik_hash, 'hex'), :password_hash)
+            INSERT INTO jakarta_connect.tbl_warga (nama_lengkap, email, nik_encrypted, nik_hash, password_hash, created_ip)
+            VALUES (:nama_lengkap, :email, decode(:nik_encrypted, 'hex'), decode(:nik_hash, 'hex'), :password_hash, :created_ip::inet)
         ");
         return $stmt->execute([
-            'nama_lengkap' => $namaLengkap,
-            'email' => strtolower($email),
+            'nama_lengkap'  => $namaLengkap,
+            'email'         => strtolower($email),
             'nik_encrypted' => bin2hex($nikEncryptedBin),
-            'nik_hash' => bin2hex($nikHashBin),
-            'password_hash' => $passwordHash
+            'nik_hash'      => bin2hex($nikHashBin),
+            'password_hash' => $passwordHash,
+            'created_ip'    => $validIp,
         ]);
+    }
+
+    public function countRecentRegistrationsByIp(string $ipAddress): int {
+        if (!filter_var($ipAddress, FILTER_VALIDATE_IP)) {
+            return 0;
+        }
+
+        $stmt = $this->db->prepare("
+            SELECT COUNT(*) FROM jakarta_connect.tbl_warga
+            WHERE created_ip = :ip::inet
+              AND created_at >= now() - interval '1 hour'
+        ");
+        $stmt->execute(['ip' => $ipAddress]);
+        return (int)$stmt->fetchColumn();
     }
 
     public function incrementFailedLogin(string $table, string $id, int $currentAttempts): void {

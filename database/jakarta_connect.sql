@@ -45,6 +45,7 @@ CREATE TABLE tbl_warga (
     jumlah_gagal_login  smallint     NOT NULL DEFAULT 0,
     terkunci_sampai     timestamptz,
     login_terakhir_at   timestamptz,
+    created_ip          inet,
     created_at          timestamptz  NOT NULL DEFAULT now(),
     updated_at          timestamptz  NOT NULL DEFAULT now(),
 
@@ -53,6 +54,8 @@ CREATE TABLE tbl_warga (
     CONSTRAINT chk_warga_gagal_login   CHECK (jumlah_gagal_login BETWEEN 0 AND 3),
     CONSTRAINT chk_warga_email_format  CHECK (email ~* '^[^@\s]+@[^@\s]+\.[^@\s]+$')
 );
+CREATE INDEX idx_warga_created_ip ON tbl_warga (created_ip, created_at DESC);
+
 CREATE TRIGGER trg_warga_updated BEFORE UPDATE ON tbl_warga
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
